@@ -5,7 +5,8 @@ import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 from typing import Optional
-
+from dotenv import load_dotenv
+load_dotenv()
 class Settings(BaseSettings):
     """Configuration application"""
     
@@ -46,8 +47,7 @@ class Settings(BaseSettings):
     GEMINI_TIMEOUT: int = 30
     
     # ============ OPENROUTER ============
-    OPENROUTER_API_KEY: str = "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"
-    # OPENROUTER_API_KEY: str = "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"
+    OPENROUTER_API_KEY: str = str(os.getenv("OPENROUTER_API_KEY"))
     OPENROUTER_URL: str = "https://openrouter.ai/api/v1"
     
     # ============ SUPABASE ============
