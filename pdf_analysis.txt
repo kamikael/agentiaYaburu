@@ -1,0 +1,646 @@
+Chatbot Intelligent Yaburu
+Conception et mise en place d'un assistant conversationnel IA intégré à la plateforme Yaburu via WhatsApp, pour 
+accompagner les vendeurs africains dans la gestion de leur boutique en ligne.
+INTELLIGENCE ARTIFICIELLE WHATSAPP BUSINESS BÉNIN · AFRIQUE
+
+Contexte & Problématique
+Un commerce numérique en pleine 
+expansion
+Le commerce électronique connaît une croissance rapide à 
+l'échelle mondiale et progresse également en Afrique, où de plus 
+en plus d'entrepreneurs utilisent des plateformes numériques 
+pour vendre leurs produits. La plateforme Yaburu s'inscrit dans 
+cette dynamique en proposant aux vendeurs un environnement 
+digital pour lancer et gérer leur activité commerciale en ligne.
+Cependant, de nombreux utilisateurs rencontrent encore des 
+difficultés dans l'utilisation quotidienne de ces outils : création de 
+produits, consultation des ventes, gestion du stock, 
+compréhension des fonctionnalités ou besoin d'assistance rapide.
+La question centrale
+Comment permettre aux utilisateurs de la 
+plateforme Yaburu d'obtenir une assistance rapide, 
+disponible en continu et capable de les 
+accompagner efficacement dans la gestion de leur 
+boutique, tout en réduisant la charge du support 
+humain et en améliorant l'expérience globale de la 
+plateforme ?
+🚧 Maîtrise limitée
+Plusieurs utilisateurs ne maîtrisent 
+pas pleinement les fonctionnalités 
+essentielles de la plateforme.
+⏱ Support limité
+Le support humain est contraint 
+par les horaires, le temps de 
+réponse et le volume de 
+demandes.
+📉 Perte d'efficacité
+Les interfaces classiques 
+nécessitent plusieurs 
+manipulations, freinant les 
+utilisateurs moins techniques.
+
+Objectifs du Projet
+Un assistant IA pour transformer l'expérience vendeur sur Yaburu
+Automatiser l'assistance
+Permettre aux vendeurs d'obtenir des réponses instantanées 
+aux questions fréquentes liées à l'utilisation de la 
+plateforme Yaburu.
+Simplifier la gestion
+Permettre aux utilisateurs d'effectuer des opérations via une 
+interface conversationnelle simple : création de produits, 
+consultation des ventes, vérification du stock.
+Réduire la charge support
+Diminuer le volume des demandes répétitives traitées 
+manuellement afin de concentrer les ressources humaines 
+sur les cas complexes.
+Améliorer l'expérience
+Offrir un canal d'assistance accessible 24h/24 via WhatsApp, 
+rapide, simple d'utilisation et adapté aux habitudes 
+numériques des utilisateurs.
+Solution technique viable
+Mettre en place une architecture sécurisée, scalable et 
+économiquement soutenable, capable d'évoluer avec la 
+croissance de la plateforme.
+Nouvelle monétisation
+Proposer à terme des fonctionnalités avancées payantes 
+(analytics, automatisation, assistance enrichie), tout en 
+maintenant un support de base gratuit.
+
+Périmètre du Projet
+Utilisateurs concernés
+Les commerçants disposant d'une boutique sur 
+Yaburu
+Les vendeurs débutants ayant besoin 
+d'accompagnement
+Les utilisateurs actifs souhaitant gérer plus 
+rapidement leur activité
+L'équipe Yaburu, via la réduction de la charge 
+support
+Etant disopnible pour tout les pays ressortissant 
+de l'afrique de l'ouest, Le chatbot sera accessible 
+principalement via WhatsApp, canal largement 
+utilisé et facilement accessible par les 
+commerçants, sans nécessité d'installer une 
+nouvelle application.
+Portée fonctionnelle
+Fournir une assistance liée à l'utilisation de la 
+plateforme
+Guider l'utilisateur dans certaines opérations
+Faciliter l'accès aux informations de gestion
+Automatiser certaines demandes simples
+Améliorer l'expérience utilisateur globale
+Hors périmètre (Phase 1)
+Assistance aux clients finaux des boutiques
+Gestion logistique externe (livraison, transport)
+Comptabilité avancée
+Automatisation marketing complexe
+Application mobile dédiée au chatbot
+
+Description Fonctionnelle du Système
+Les acteurs du système
+01
+Vendeur Yaburu — Utilisateur principal du 
+chatbot, sollicite l'assistant pour obtenir de 
+l'aide ou effectuer des opérations.
+02
+Administrateur Yaburu — Responsable du 
+suivi global, de la supervision et de la gestion 
+des incidents.
+03
+Agent IA — Composant intelligent chargé de 
+comprendre les demandes, formuler les 
+réponses et déclencher les actions 
+autorisées.
+04
+Plateforme Yaburu — Système principal 
+contenant les données métiers : boutiques, 
+produits, ventes, stocks.
+05
+WhatsApp Business API — Canal de 
+communication permettant les échanges 
+entre l'utilisateur et le chatbot.
+Scénario général de fonctionnement
+Réponse Utilisateur
+Requête vers Yaburu
+Agent IA AnalyseBackend ReçoitMessage WhatsApp
+Exemples de cas d'utilisation
+Fonctionnalités Principales
+Assistance 
+utilisateur
+Répondre aux questions 
+fréquentes sur l'utilisation de 
+Yaburu
+Expliquer certaines 
+fonctionnalités
+Guider l'utilisateur étape par 
+étape
+Gestion simplifiée de 
+boutique
+Assister la création d'un produit
+Fournir les ventes réalisées
+Consulter le stock disponible
+Afficher certaines statistiques 
+simples
+Support 
+conversationnel
+Réponses instantanées
+Interaction naturelle en langage 
+courant
+Disponibilité continue selon 
+l'infrastructure déployée
+Règles de gestion
+Un utilisateur ne peut 
+accéder qu'aux données 
+de sa propre boutique
+Toute action sensible 
+devra être confirmée 
+avant exécution
+Les réponses doivent 
+rester claires et 
+compréhensibles
+Les échanges seront 
+journalisés à des fins de 
+suivi et d'amélioration
+« Comment ajouter un produit 
+? »
+« Montre-moi mes ventes du 
+jour »
+« Combien reste-t-il en stock 
+du produit X ? »
+« Aide-moi à créer une 
+nouvelle fiche produit »
+
+Stack Technique
+BACKEND & FRAMEWORK
+FastAPI
+Framework backend 
+utilisé pour exposer les 
+endpoints API du 
+chatbot.
+Uvicorn
+Serveur ASGI utilisé pour 
+exécuter l'application 
+FastAPI.
+Docker ou doku
+Utilisé pour 
+conteneuriser 
+l'application et faciliter 
+le déploiement.
+Uvicorn Workers 
+/ Scaling
+Permet de gérer 
+plusieurs utilisateurs 
+simultanément.
+INTELLIGENCE ARTIFICIELLE & ORCHESTRATION
+LangChain
+Framework utilisé pour construire 
+l'agent IA.
+LangGraph
+Extension de LangChain utilisée 
+pour orchestrer le workflow de 
+l'agent.
+Modèle LLM (API 
+modèle IA)
+Utilisé pour comprendre les 
+messages utilisateur, déterminer 
+l'intention et générer les réponses 
+(Gemini flash 2.0 en test et 
+migration 2.5 si nécéssaire).
+DONNÉES & STOCKAGE
+Supabase
+Base de données principale pour stocker les utilisateurs, 
+l'historique des conversations et les données du chatbot.
+Supabase (Base vectorielle 
+pgvector)
+Utilisée pour stocker la documentation Yaburu et 
+permettre la recherche sémantique.
+INTÉGRATIONS & CANAUX
+API WhatsApp Business (Meta)
+Canal principal de communication entre le vendeur et 
+l'agent IA pour production.
+et utilisation de WAZZENDERAPI pour conception en 
+attente de validation
+API Yaburu
+API métier permettant au chatbot d'effectuer des actions 
+sur la boutique.
+
+Planning de Réalisation — 1 mois (4 
+sprints)
+Stack FastAPI + LangGraph + Supabase + Meta API
+Le projet est découpé en 4 sprints sur 30 jours, avec une progression claire : fondations techniques, cerveau de l’agent IA, 
+intégration métier, puis robustesse, scalabilité et déploiement production.
+SEMAINE 1 — Fondations & infrastructure
+Jours 1–7 · Objectif : socle technique opérationnel
+01
+J1-2 : Mise en place de 
+l'environnement
+repo Git
+Docker Compose (FastAPI + Supabase local)
+variables d'environnement
+structure du projet Python
+02
+J3-4 : Intégration WhatsApp Business 
+API
+création de l'app Meta Developer
+configuration du webhook
+vérification du token
+envoi/réception de messages tests
+03
+J5-6 : Modélisation base de données 
+Supabase
+tables users, conversations, messages
+connexion depuis FastAPI via client Supabase Python
+04
+J7 : Premier flux de bout en bout
+message WhatsApp → webhook → écho → réponse 
+WhatsApp
+tests + documentation
+Livrable fin S1 :
+Le serveur FastAPI tourne dans Docker, reçoit les messages WhatsApp, répond en écho, et persiste les données dans 
+Supabase.
+Stack S1
+FastAPI · Uvicorn · Docker · Supabase · Meta Webhooks
+SEMAINE 2 — Cerveau de l'agent IA
+Jours 8–14 · Objectif : agent conversationnel fonctionnel avec mémoire
+01
+J8-9 : Construction du graph 
+LangGraph
+nœuds receive_message, classify_intent, 
+generate_response, send_response
+intégration du LLM (GPT-4o ou Claude)
+02
+J10 : Gestion de la mémoire 
+conversationnelle
+chargement de l'historique depuis Supabase via 
+phone_number
+injection dans le contexte LLM à chaque message
+03
+J11-12 : Système RAG
+ingestion documentation Yaburu dans pgvector
+embeddings + chunking
+retriever sémantique branché comme tool LangChain
+04
+J13-14 : Tests conversationnels
+questions FAQ
+vérification pertinence réponses RAG
+ajustement des prompts
+Livrable fin S2 :
+Agent capable de répondre intelligemment avec mémoire et contexte.
+Stack S2
+LangChain · LangGraph · LLM API · pgvector · Supabase
+SEMAINE 3 — Intégration API Yaburu (actions métier)
+Jours 15–21 · Objectif : gestion de boutique via WhatsApp
+01
+J15-16 : Client API Yaburu
+wrapper Python
+authentification
+gestion erreurs
+modèles Pydantic (produit, stock, vente)
+02
+J17-18 : Tools LangChain
+create_product
+get_sales
+check_stock
+get_stats
+03
+J19-20 : Flux création produit
+conversation multi-tour
+collecte : nom, prix, stock, description
+validation + confirmation
+04
+J21 : Tests complets
+créer produit
+consulter ventes
+vérifier stock
+Livrable fin S3 :
+Un vendeur peut gérer sa boutique via WhatsApp en langage naturel.
+Stack S3
+API Yaburu · LangChain Tools · Pydantic · LangGraph
+SEMAINE 4 — Robustesse, scalabilité & déploiement
+Jours 22–30 · Objectif : système prêt production
+01
+J22-23 : Gestion des erreurs
+messages vides
+API indisponible
+timeout LLM
+formats non supportés (image/audio)
+02
+J24-25 : Scalabilité
+multi-workers Uvicorn
+tests de charge
+gestion async avec asyncio
+03
+J26-27 : Sécurité
+validation signature Meta
+rate limiting
+logs structurés
+gestion des secrets
+04
+J28-29 : Déploiement
+Docker en production
+VPS / Railway / Render
+CI/CD GitHub Actions
+monitoring (healthcheck)
+05
+J30 : Finalisation
+tests utilisateurs
+corrections
+documentation
+Livrable fin S4 (MVP) :
+Agent IA Yaburu prêt en production :
+- disponible 24/7
+- multi-utilisateurs
+- actions métier fonctionnelles
+- monitoring actif
+Stack S4
+Docker · Uvicorn Workers · GitHub Actions · FastAPI Security
+
+Diagramme de Gantt — Planning 1 mois
+Ce diagramme présente le planning complet sur 4 semaines (30 jours), détaillant les objectifs, les tâches quotidiennes, les 
+livrables clés et la stack technique pour chaque période.
+SEMAINE 1 (Jours 1-7) — 
+Fondations & infrastructure
+J1-2 : Mise en place de l'environnement (repo Git, 
+Docker Compose, variables env, structure Python)
+J3-4 : Intégration WhatsApp Business API (app 
+Meta, webhook, token, tests)
+J5-6 : Modélisation Supabase (tables 
+users/conversations/messages, connexion 
+FastAPI)
+J7 : Premier flux de bout en bout (WhatsApp → 
+webhook → écho → réponse, tests + doc)
+Livrable : Serveur FastAPI dans Docker, reçoit 
+messages WhatsApp, répond en écho, persiste dans 
+Supabase.
+Stack : FastAPI · Uvicorn · Docker · Supabase · Meta 
+Webhooks
+SEMAINE 2 (Jours 8-14) — Cerveau 
+de l'agent IA
+J8-9 : Construction graph LangGraph (nœuds 
+receive_message, classify_intent, 
+generate_response, send_response, intégration 
+LLM)
+J10 : Gestion mémoire conversationnelle 
+(chargement historique Supabase via 
+phone_number, injection contexte LLM)
+J11-12 : Système RAG (ingestion doc Yaburu dans 
+pgvector, embeddings + chunking, retriever 
+sémantique)
+J13-14 : Tests conversationnels (FAQ, vérification 
+pertinence RAG, ajustement prompts)
+Livrable : Agent capable de répondre intelligemment 
+avec mémoire et contexte.
+Stack : LangChain · LangGraph · LLM API · pgvector · 
+Supabase
+SEMAINE 3 (Jours 15-21) — 
+Intégration API Yaburu
+J15-16 : Client API Yaburu (wrapper Python, 
+authentification, gestion erreurs, modèles 
+Pydantic)
+J17-18 : Tools LangChain (create_product, 
+get_sales, check_stock, get_stats)
+J19-20 : Flux création produit (conversation multi-
+tour, collecte nom/prix/stock/description, 
+validation + confirmation)
+J21 : Tests complets (créer produit, consulter 
+ventes, vérifier stock)
+Livrable : Vendeur peut gérer boutique via WhatsApp 
+en langage naturel.
+Stack : API Yaburu · LangChain Tools · Pydantic · 
+LangGraph
+SEMAINE 4 (Jours 22-30) — 
+Robustesse, scalabilité & 
+déploiement
+J22-23 : Gestion erreurs (messages vides, API 
+indisponible, timeout LLM, formats non 
+supportés)
+J24-25 : Scalabilité (multi-workers Uvicorn, tests 
+charge, gestion async asyncio)
+J26-27 : Sécurité (validation signature Meta, rate 
+limiting, logs structurés, gestion secrets)
+J28-29 : Déploiement (Docker production, 
+VPS/Railway/Render, CI/CD GitHub Actions, 
+monitoring healthcheck)
+J30 : Finalisation (tests utilisateurs, corrections, 
+documentation)
+Livrable : Agent IA Yaburu prêt production (24/7, 
+multi-utilisateurs, actions métier, monitoring).
+Stack : Docker · Uvicorn Workers · GitHub Actions · 
+FastAPI Security
+
+Dimensionnement de la Consommation IA
+Chaque demande au chatbot consomme des tokens : la question de l'utilisateur, les instructions système, les données 
+récupérées et la réponse générée. Deux messages peuvent donc coûter des montants très différents.
+A. Pourquoi mesurer en token ?
+la question de l'utilisateur
+les instructions système
+les données récupérées (JSON, stats, produits)
+la réponse générée
+/g23A  Donc deux messages peuvent coûter des montants très différents.
+Exemple :
+"Bonjour" = très faible coût
+"Analyse mes ventes du mois" = coût plus élevé
+B. Méthode de calcul retenue
+Pour chaque fonctionnalité, nous estimons les valeurs suivantes :
+Élément Tokens
+Prompt système (agent) 5 000
+Contexte conversationnel 1 000
+Données outil (JSON) 1 500
+Input utilisateur 50
+Output IA 200 à 500
+C. Estimation par fonctionnalité
+Fonctionnalité Type Tokens
+Voir infos produit avec outil 14 000
+Voir stock avec outil 14 000
+Consulter statistiques avec outil 14 000 à 16 000
+Analyse des ventes avec outil 16 000 à 20 000
+Support simple sans outil 6 000 à 7 000
+Support avancé sans outil 7 000 à 10 000
+Création produit IA mixte 12 000 à 18 000
+D. Lecture du tableau - exemples détaillés
+Exemple 1 : Consulter stock
+Le vendeur écrit : "Combien reste-t-il du produit Nike Air 
+Max ?"
+lit la question
+récupère les données produit
+renvoie la quantité disponible
+/g23A  coût moyen : 14000 tokens
+Exemple 2 : Consulter statistiques
+Le vendeur écrit : "Montre-moi mes ventes du mois"
+récupère les données commerciales
+résume les indicateurs principaux
+génère une réponse claire
+/g23A  coût moyen : 14000 à 16000 tokens
+Exemple 3 : Support plateforme
+Le vendeur écrit : "Comment publier un produit ?"
+comprend la demande
+utilise ses instructions internes
+génère une réponse explicative
+/g23A  coût moyen : 7000 tokens
+Exemple 4 : Création produit 
+assistée
+Le vendeur écrit : "Crée un produit T-shirt noir à 5000 
+FCFA"
+analyse les informations
+prépare les champs nécessaires
+confirme les données
+génère la réponse
+/g23A  coût moyen : 18000 tokens
+E. Estimation Consommation journalière type
+Si un vendeur utilise chaque fonctionnalité principale 1 fois par jour :
+Action Tokens
+Infos produit 14 000
+Stock 14 000
+Statistiques 15 000
+Analyse ventes 18 000
+Support simple 6 500
+Total journalier ≈ 67 500 tokens / jour
+F. Consommation mensuelle par utilisateur
+Calcul : 67 500 × 30 = 2 025 000 tokens / mois
+
+Budget du Projet Estimé
+1. Tableau des coûts — Agent IA
+Consommation mensuelle basée sur 67 500 tokens/jour/utilisateur
+Métrique Valeur
+Tokens / jour / user 67 500
+Détail 5 actions cumulées
+Tokens / mois / user 2 025 000
+Calcul × 30 jours
+Modèle recommandé Gemini 2.0 Flash — meilleur rapport
+2. Dépenses mensuelles estimées — Gemini 2.0 
+Flash
+Poste 100 users 300 users 1 000 users
+Render (hébergement) Web 
+service + workspace
+~15 000 FCFA Standard 
+$25
+~66 000 FCFA Pro $85 + 
+WS $25
+~285 000 FCFA Pro Ultra 
+$450 + WS $25
+Supabase (base de données) 
+PostgreSQL managé
+0 FCFA Free plan ~15 000 FCFA Pro $25/mo ~30 000 FCFA Pro + 
+compute ~$50
+Gemini 2.0 Flash (IA) Input 
+$0,10 + Output $0,40 / M 
+tokens
+~26 700 FCFA ~$44,5 ~80 100 FCFA ~$133,5 ~267 300 FCFA ~$445,5
+WhatsApp Business API Meta 
+Cloud API
+0 FCFA categorie de 
+message service
+0FCFA categorie de 
+message service
+0 FCFA categorie de 
+message service
+Bande passante (extra) Au-
+delà du forfait inclus
+0 FCFA Incluse ~7 500 FCFA ~$12 extra ~22 500 FCFA ~$37 extra
+TOTAL MENSUEL ESTIMÉ ~41 700 FCFA ~168 600 FCFA ~604 800 FCFA
+3. Option Gemini 2.5 Flash (qualité supérieure)
+IA uniquement — comparaison des coûts
+Modèle 100 users 300 users 1 000 users
+Gemini 2.5 Flash Input $0,30 + Output 
+$2,50 / M tokens
+~144 600 FCFA ~$241 ~433 800 FCFA ~$723 ~1 446 000 FCFA ~$2 410
+TOTAL MENSUEL (2.5 Flash) ~160 600 FCFA ~522 300 FCFA ~1 782 500 FCFA
+Les trois scénarios de croissance — 100, 300 et 1 000 utilisateurs — montrent une montée progressive des coûts 
+selon l'infrastructure, la consommation IA et le volume de conversations. mais cela n'est qu'une estimation. les 
+consommations réelles seront prises pendant  dans les tests apres l'implémentation
+
+Modèle Économique
+Le modèle économique repose sur une stratégie Freemium : une offre gratuite pour favoriser l'adoption, puis des offres 
+payantes pour monétiser les fonctionnalités à forte valeur ajoutée. Les recettes proviendront principalement des 
+abonnements mensuels des vendeurs utilisant les options avancées du chatbot.
+🆓 Gratuit
+0 FCFA / mois
+Pour tous les vendeurs
+Support utilisation Yaburu
+Questions fréquentes
+Assistance via WhatsApp
+⚡ Pro
+5 000 FCFA / mois
+Pour les vendeurs actifs
+Consultation ventes simples
+Consultation stock
+Création produit assistée IA
+Génération description produit
+🚀 Business
+15 000 FCFA / mois
+Pour les boutiques ambitieuses
+Analyse ventes mensuelles
+Recommandations IA business
+Suggestions produits 
+performants
+Priorité support
+Projections détaillées des revenus par niveau d'utilisateur
+Utilisateurs 
+totaux
+Utilisateurs 
+Gratuit
+Utilisateurs 
+Pro
+Utilisateurs 
+Business
+Recette Pro Recette 
+Business
+Recette 
+Totale / mois
+100 70 25 5 125 000 FCFA 75 000 FCFA 200 000 FCFA
+300 180 90 30 450 000 
+FCFA
+450 000 FCFA 900 000 FCFA
+1000 600 300 100 1 500 000 
+FCFA
+1 500 000 
+FCFA
+3 000 000 
+FCFA
+Recettes mensuelles estimées
+Recette Pro FCFA
+ Recette Business FCFA
+Hypothèses : Offre Pro à 5 000 FCFA/mois · Offre Business à 15 000 FCFA/mois · Répartition estimée : 60% Gratuit, 
+30% Pro, 10% Business. Ces chiffres sont des estimations prévisionnelles susceptibles d'évoluer selon l'adoption 
+réelle du service.
+0
+500k
+1m
+1.5m
+2m
+2.5m
+3m
+100 utilisateurs 300 utilisateurs 1000 utilisateurs
+Segment
+
+Synthèse & Vision Stratégique
+Le chatbot Yaburu représente une opportunité unique de moderniser l'expérience vendeur en Afrique, en combinant 
+l'accessibilité de WhatsApp avec la puissance de l'intelligence artificielle conversationnelle.
+24/7
+Disponibilité
+Assistance continue sans interruption 
+pour tous les vendeurs
+3
+Semaines
+Durée maximale pour livrer un MVP 
+fonctionnel et déployé
+60%
+Utilisateurs gratuits
+Base d'adoption large pour alimenter la 
+croissance Freemium
+Valeur ajoutée pour les vendeurs
+Gain de temps significatif dans la gestion 
+quotidienne
+Assistance immédiate sans attendre le support 
+humain
+Meilleure autonomie et maîtrise des outils 
+numériques
+Expérience moderne et accessible via WhatsApp
+Périmètre géographique & expansion
+Le projet est initialement pensé pour les utilisateurs Yaburu 
+opérant au Bénin,et possiblement les pays pouvant avoir 
+acces au paiement fedapay avec une possibilité d'extension 
+progressive vers d'autres pays africains où WhatsApp 
+constitue un canal de communication dominant.
+MVP EN 3 SEMAINES WHATSAPP BUSINESS API GEMINI 2.0 FLASH BÉNIN → AFRIQUE
+
