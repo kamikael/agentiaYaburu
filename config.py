@@ -29,13 +29,13 @@ class Settings(BaseSettings):
     WHATSAPP_API_URL: str = "https://graph.instagram.com/v18.0"
     WHATSAPP_PHONE_NUMBER_ID: str   = "102373896015622"
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = "421414195902446"
-    WHATSAPP_API_TOKEN: str = "EAAVzIZBshP4BO0xZBXA0jA2Y41xZAg1MND4nZAgQ1sZArjR78g58B5d53O1P73q7ZB3rBZDZA5z1pX8B0xZA6V7J7Xm51GZA4o9m12b67eA68d4qZA51gZDZD"
+    WHATSAPP_API_TOKEN: str = "EAAVzIZBshP4BOnj0Qz1sFh5g5gI4u6g4uZA74X77Xj7iM139ZAVN5sF0W4gJq071jHlZCZBD8k85K5pZAk5947G4F1l93Q0u7r2b35b4y7v6n31iJ76N5pY6Q97u4c2gQh4bXJ6u71aC577j3ZB4B2p98d7G7wS334Y6u7uB6wY5q65B513O78b1j1v1G5mD503w1349w22g91ZB517W"
     WHATSAPP_SECRET: str    = "b92e306e541c0b33eb1e0a631d3e6fcc"
     WEBHOOK_VERIFY_TOKEN: str = "mon_token_secret_123"
     
     # ============ YABURU API ============
-    YABURU_API_URL: str = "http://localhost:8000"
-    YABURU_API_KEY: str = "5|CtjYaNMoa7bQjn46sD8VBizQzBZB1ERHW40eVPdudc795ecc"
+    YABURU_API_URL: str = str(os.getenv("YABURU_API_URL"))
+    YABURU_API_KEY: str = str(os.getenv("YABURU_API_KEY"))
     YABURU_API_TIMEOUT: int = 30        
     
     # ============ GOOGLE GEMINI ============
@@ -48,11 +48,11 @@ class Settings(BaseSettings):
     
     # ============ OPENROUTER ============
     OPENROUTER_API_KEY: str = str(os.getenv("OPENROUTER_API_KEY"))
-    OPENROUTER_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_URL: str = str(os.getenv("OPENROUTER_URL"))
     
     # ============ SUPABASE ============
-    SUPABASE_URL: str = "https://bfgbhomlnlcebgfczwpu.supabase.co"
-    SUPABASE_KEY: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmZ2Job21sbmxjZWJnZmN6d3B1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzg4Njc2MCwiZXhwIjoyMDkzNDYyNzYwfQ.nbmqrSD7m1hmtT5ZyJV7bMpYCtFmLLJUvm2niGCvk3M"  
+    SUPABASE_URL: str = str(os.getenv("SUPABASE_URL"))
+    SUPABASE_KEY: str = str(os.getenv("SUPABASE_KEY"))
     SUPABASE_JWT_SECRET: Optional[str] = None   
     
     # ============ RAG / EMBEDDINGS ============

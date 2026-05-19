@@ -35,7 +35,7 @@ class WebhookRouter:
             # 2. Synchroniser ou créer l'utilisateur et ses boutiques
             user = await onboarding_service.handle_user_connection(db, phone, yaburu_data)
             
-            # 3. Vérifier s'il y a une session active
+            # 3. Vérifier s'il y a une session active (avec auto-nettoyage)
             active_session = None
             session_result = await db.execute(
                 select(Session).where(
@@ -44,9 +44,19 @@ class WebhookRouter:
                         Session.is_active == True,
                         Session.expires_at > datetime.utcnow()
                     )
-                )
+                ).order_by(Session.created_at.desc())
             )
-            active_session = session_result.scalar_one_or_none()
+            active_sessions = session_result.scalars().all()
+            
+            if active_sessions:
+                active_session = active_sessions[0]
+                
+                # Self-healing : désactiver les autres sessions actives en doublon
+                if len(active_sessions) > 1:
+                    logger.warning(f"🧹 Self-Healing : Désactivation de {len(active_sessions) - 1} sessions actives en doublon pour l'utilisateur {user.id}")
+                    for s in active_sessions[1:]:
+                        s.is_active = False
+                    await db.commit()
             
             # 4. Gérer la conversation
             if active_session:
@@ -60,7 +70,15 @@ class WebhookRouter:
                         )
                     ).order_by(Conversation.last_message_at.desc())
                 )
-                conversation = conv_result.scalar_one_or_none()
+                conversations = conv_result.scalars().all()
+                conversation = conversations[0] if conversations else None
+                
+                # Self-healing : archiver les autres conversations actives en doublon
+                if conversations and len(conversations) > 1:
+                    logger.warning(f"🧹 Self-Healing : Archivage de {len(conversations) - 1} conversations actives en doublon pour l'utilisateur {user.id}")
+                    for c in conversations[1:]:
+                        c.status = "archived"
+                    await db.commit()
                 
                 if not conversation:
                     conversation = Conversation(

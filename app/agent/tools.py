@@ -9,7 +9,12 @@ from app.agent.context import store_id_ctx
 from sqlalchemy import select, delete, and_
 from app.db import AsyncSessionLocal
 from app.models.pendingMedia import PendingMedia
+from app.models.user import User
+from app.models.stores import store as StoreModel
+from app.models.sessions import Session
 from app.agent.context import store_id_ctx, phone_number_ctx, yaburu_store_id_ctx
+from datetime import datetime, timedelta
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +84,105 @@ async def get_store_products() -> str:
         logger.error(f"Error in get_store_products tool: {e}")
         return f"Erreur lors de la récupération des produits: {str(e)}"
 
-@tool
-async def change_store(new_store_id: str) -> str:
-    """ permrt de pivoter vers une autre boutique en utilisant l'id de la boutique."""
-    store_id = yaburu_store_id_ctx.get()
-    if not store_id:
-        return "Erreur : Aucun contexte de boutique trouvé."
+class ChangeStoreSchema(BaseModel):
+    name_store: str = Field(..., description="Le nom exact de la boutique vers laquelle pivoter.")
+
+@tool(args_schema=ChangeStoreSchema)
+async def change_store(name_store: str) -> str:
+    """Permet de basculer la session de travail active vers la boutique spécifiée par son nom."""
+    phone = phone_number_ctx.get()
+    if not phone:
+        return "Erreur : Aucun contexte de numéro de téléphone trouvé."
 
     try:
-        products = await yaburu_service.get_store_products(new_store_id)
-        if not products:
-            return "Aucun produit trouvé."
-        return json.dumps(products, indent=2, ensure_ascii=False)
+        # 1. Interroger Yaburu pour valider la boutique
+        data = await yaburu_service.check_user(phone)
+        if not data or "stores" not in data:
+            return "Erreur : Impossible de récupérer vos boutiques depuis Yaburu."
+
+        stores = data["stores"]
+        target_remote_store = None
+        cleaned_input = name_store.strip().lower()
+
+        # Recherche insensible à la casse
+        for s in stores:
+            if s.get("name", "").strip().lower() == cleaned_input:
+                target_remote_store = s
+                break
+
+        if not target_remote_store:
+            return f"Erreur : Aucune boutique trouvée avec le nom '{name_store}'."
+
+        target_yaburu_store_id = str(target_remote_store.get("id"))
+
+        async with AsyncSessionLocal() as db:
+            # 2. Récupérer l'utilisateur
+            user_res = await db.execute(select(User).where(User.phone_number == phone))
+            user = user_res.scalar_one_or_none()
+            if not user:
+                return "Erreur : Utilisateur local introuvable."
+
+            # 3. Récupérer la boutique locale pré-synchronisée
+            store_res = await db.execute(
+                select(StoreModel).where(
+                    and_(
+                        StoreModel.user_id == user.id,
+                        StoreModel.yaburu_store_id == target_yaburu_store_id
+                    )
+                )
+            )
+            store_obj = store_res.scalar_one_or_none()
+            if not store_obj:
+                return f"Erreur : La boutique '{name_store}' n'est pas synchronisée localement."
+
+            # 4. Rechercher s'il existe déjà une session valide pour la boutique cible
+            existing_session_res = await db.execute(
+                select(Session).where(
+                    and_(
+                        Session.user_id == user.id,
+                        Session.store_id == store_obj.id,
+                        Session.expires_at > datetime.utcnow()
+                    )
+                ).order_by(Session.created_at.desc()).limit(1)
+            )
+            target_sess = existing_session_res.scalars().first()
+
+            # Désactiver TOUTES les sessions actives actuelles de l'utilisateur
+            await db.execute(
+                Session.__table__.update()
+                .where(and_(Session.user_id == user.id, Session.is_active == True))
+                .values(is_active=False)
+            )
+
+            if target_sess:
+                # Si une session valide existe déjà pour cette boutique, on la réactive
+                logger.info(f"🔄 Réactivation de la session existante {target_sess.id} pour la boutique {store_obj.store_name}")
+                target_sess.is_active = True
+            else:
+                # Sinon, on crée une nouvelle session active de 24h
+                logger.info(f"🆕 Création d'une nouvelle session pour la boutique {store_obj.store_name}")
+                token = secrets.token_urlsafe(32)
+                target_sess = Session(
+                    user_id=user.id,
+                    store_id=store_obj.id,
+                    session_token=token,
+                    is_active=True,
+                    expires_at=datetime.utcnow() + timedelta(hours=24)
+                )
+                db.add(target_sess)
+
+            await db.commit()
+
+            # 5. Mettre à jour les ContextVars pour le tour de réflexion actuel
+            yaburu_store_id_ctx.set(target_yaburu_store_id)
+            store_id_ctx.set(str(store_obj.id))
+
+            logger.info(f"🔄 Pivotement réussi pour {phone} vers '{store_obj.store_name}'")
+            return f"Succès ! Vous avez pivoté avec succès vers la boutique '{store_obj.store_name}'."
+
     except Exception as e:
-        logger.error(f"Error in get_store_products tool: {e}")
-        return f"Erreur lors de la récupération des produits: {str(e)}"
+        logger.error(f"❌ Erreur lors du change_store : {e}")
+        return f"Une erreur technique est survenue : {str(e)}"
 
 
 class CreateProductSchema(BaseModel):
@@ -163,6 +252,7 @@ AVAILABLE_TOOLS = {
     "get_store_products": get_store_products,
     "create_store_product": create_store_product,
     "get_store_users": get_store_users, 
+    "change_store": change_store,
     "final_answer": final_answer 
     }
 
