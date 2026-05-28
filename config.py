@@ -26,20 +26,20 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres.bfgbhomlnlcebgfczwpu:Kamikael123%40@aws-1-eu-west-3.pooler.supabase.com:6543/postgres"   
     
     # ============ WHATSAPP / META ============
-    WHATSAPP_API_URL: str = "https://graph.instagram.com/v18.0"
+    WHATSAPP_API_URL: str = "https://www.wasenderapi.com/api/send-message"
     WHATSAPP_PHONE_NUMBER_ID: str   = "102373896015622"
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = "421414195902446"
-    WHATSAPP_API_TOKEN: str = "EAAVzIZBshP4BOnj0Qz1sFh5g5gI4u6g4uZA74X77Xj7iM139ZAVN5sF0W4gJq071jHlZCZBD8k85K5pZAk5947G4F1l93Q0u7r2b35b4y7v6n31iJ76N5pY6Q97u4c2gQh4bXJ6u71aC577j3ZB4B2p98d7G7wS334Y6u7uB6wY5q65B513O78b1j1v1G5mD503w1349w22g91ZB517W"
-    WHATSAPP_SECRET: str    = "b92e306e541c0b33eb1e0a631d3e6fcc"
-    WEBHOOK_VERIFY_TOKEN: str = "mon_token_secret_123"
-    
+    WHATSAPP_API_TOKEN: str = str(os.getenv("WHATSAPP_API_TOKEN"))
+    WHATSAPP_SECRET: str = str(os.getenv("WHATSAPP_SECRET"))
+    WEBHOOK_VERIFY_TOKEN: str = str(os.getenv("WEBHOOK_VERIFY_TOKEN"))
+
     # ============ YABURU API ============
     YABURU_API_URL: str = str(os.getenv("YABURU_API_URL"))
     YABURU_API_KEY: str = str(os.getenv("YABURU_API_KEY"))
     YABURU_API_TIMEOUT: int = 30        
     
     # ============ GOOGLE GEMINI ============
-    GEMINI_API_KEY: str = "AIzaSyANcdZUm5OV5dmmQOtkEVVsoaHbLG4rtt8"
+    GEMINI_API_KEY: str = str(os.getenv("GEMINI_API_KEY"))
     GEMINI_MODEL: str = "google/gemini-2.0-flash-001"
     GEMINI_TEMPERATURE: float = 0.7
     GEMINI_MAX_TOKENS: int = 1024
@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # ============ OPENROUTER ============
     OPENROUTER_API_KEY: str = str(os.getenv("OPENROUTER_API_KEY"))
     OPENROUTER_URL: str = str(os.getenv("OPENROUTER_URL"))
+    
+    # ============ OPENAI ============
+    OPENAI_API_KEY: Optional[str] = str(os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
     
     # ============ SUPABASE ============
     SUPABASE_URL: str = str(os.getenv("SUPABASE_URL"))

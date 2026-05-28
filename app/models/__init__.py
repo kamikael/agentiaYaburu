@@ -10,3 +10,7 @@ from .usageStat import *
 from .user import *
 from .system_setting import *
 from .pendingMedia import *
+from .products import *
+from .outilsExecutees import *
+from .rechercheContextuelle import *
+from .messageQueue import *

@@ -9,6 +9,7 @@ from app.agent.context import store_id_ctx
 from sqlalchemy import select, delete, and_
 from app.db import AsyncSessionLocal
 from app.models.pendingMedia import PendingMedia
+from app.models.products import Product
 from app.models.user import User
 from app.models.stores import store as StoreModel
 from app.models.sessions import Session
@@ -53,16 +54,19 @@ async def get_store_users() -> str:
         logger.error(f"Error in  get_store_users tool: {e}")
         return f"Erreur lors de la récupération des données de l'utilisateur: {str(e)}"
 
-@tool
-async def get_store_orders() -> str:
-    """Récupère la liste complète des commandes passées dans votre boutique."""
+class GetOrdersSchema(BaseModel):
+    name_product: Optional[str] = Field(None, description="Nom du produit pour filtrer les commandes actuelles.")
+
+@tool(args_schema=GetOrdersSchema)
+async def get_store_orders(name_product: Optional[str] = None) -> str:
+    """Récupère la liste des commandes passées dans votre boutique, avec la possibilité de filtrer par produit."""
     store_id = yaburu_store_id_ctx.get()
     if not store_id:
         return "Erreur : Aucun contexte de boutique trouvé."
     try:
-        orders = await yaburu_service.get_store_orders(store_id)
+        orders = await yaburu_service.get_store_orders(store_id, name_product)
         if not orders:
-            return "Aucune commande trouvée."
+            return "Aucune commande trouvée." if not name_product else f"Aucune commande trouvée pour le produit '{name_product}'."
         return json.dumps(orders, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.error(f"Error in get_store_orders tool: {e}")
@@ -136,38 +140,40 @@ async def change_store(name_store: str) -> str:
                 return f"Erreur : La boutique '{name_store}' n'est pas synchronisée localement."
 
             # 4. Rechercher s'il existe déjà une session valide pour la boutique cible
+            from sqlalchemy.orm import selectinload
             existing_session_res = await db.execute(
-                select(Session).where(
+                select(Session)
+                .options(selectinload(Session.store))
+                .where(
                     and_(
-                        Session.user_id == user.id,
-                        Session.store_id == store_obj.id,
-                        Session.expires_at > datetime.utcnow()
+                        Session.boutique_id == store_obj.id,
+                        Session.expire_le > datetime.utcnow()
                     )
-                ).order_by(Session.created_at.desc()).limit(1)
+                ).order_by(Session.date_creation.desc()).limit(1)
             )
             target_sess = existing_session_res.scalars().first()
 
             # Désactiver TOUTES les sessions actives actuelles de l'utilisateur
+            store_ids_subquery = select(StoreModel.id).where(StoreModel.utilisateur_id == user.id).scalar_subquery()
             await db.execute(
                 Session.__table__.update()
-                .where(and_(Session.user_id == user.id, Session.is_active == True))
-                .values(is_active=False)
+                .where(and_(Session.boutique_id.in_(store_ids_subquery), Session.est_active == True))
+                .values(est_active=False)
             )
 
             if target_sess:
                 # Si une session valide existe déjà pour cette boutique, on la réactive
                 logger.info(f"🔄 Réactivation de la session existante {target_sess.id} pour la boutique {store_obj.store_name}")
-                target_sess.is_active = True
+                target_sess.est_active = True
             else:
                 # Sinon, on crée une nouvelle session active de 24h
                 logger.info(f"🆕 Création d'une nouvelle session pour la boutique {store_obj.store_name}")
                 token = secrets.token_urlsafe(32)
                 target_sess = Session(
-                    user_id=user.id,
-                    store_id=store_obj.id,
+                    boutique_id=store_obj.id,
                     session_token=token,
-                    is_active=True,
-                    expires_at=datetime.utcnow() + timedelta(hours=24)
+                    est_active=True,
+                    expire_le=datetime.utcnow() + timedelta(hours=24)
                 )
                 db.add(target_sess)
 
@@ -189,13 +195,14 @@ class CreateProductSchema(BaseModel):
     name: str = Field(..., description="Le nom du nouveau produit.")
     price: float = Field(..., description="Le prix de vente du produit.")
     stock: int = Field(..., description="La quantité initiale en stock.")
+    product_type: str = Field(..., description="Le type du produit. Doit être obligatoirement l'un des suivants: 'physique', 'service', ou 'numerique'.")
     description: Optional[str] = Field(None, description="Une description optionnelle du produit.")
 
 @tool(args_schema=CreateProductSchema)
-async def create_store_product(name: str, price: float, stock: int, description: Optional[str] = None) -> str:
+async def create_store_product(name: str, price: float, stock: int, product_type: str, description: Optional[str] = None) -> str:
     """
     Crée un nouveau produit dans la boutique. 
-    Les images précédemment envoyées par l'utilisateur seront automatiquement rattachées au produit.
+    L'envoi d'au moins une image (précédemment ou simultanément) est strictement obligatoire.
     """
     store_id = yaburu_store_id_ctx.get()
     phone = phone_number_ctx.get()
@@ -212,11 +219,21 @@ async def create_store_product(name: str, price: float, stock: int, description:
             media_list = media_res.scalars().all()
             image_paths = [m.file_path for m in media_list]
             
+            # Une image au moins est obligatoire pour valider la création
+            if not image_paths:
+                return "Erreur : Impossible de créer le produit car aucune image n'est disponible. Veuillez d'abord envoyer au moins une photo du produit avant de l'enregistrer."
+            
+            # Normalisation du type de produit (le backend Yaburu résout l'ID lui-même)
+            normalized_type = (product_type or "physique").strip().lower()
+            if normalized_type not in ("physique", "service", "numerique"):
+                return f"Erreur : Le type de produit '{product_type}' n'est pas valide. Les types acceptés sont : physique, service, numerique."
+
             # 2. Appeler le service backend pour créer le produit
             product_data = {
                 "name": name,
                 "price": price,
-                "stock": stock,
+                "quantity": stock,
+                "product_type": normalized_type,
                 "description": description
             }
             
@@ -225,11 +242,27 @@ async def create_store_product(name: str, price: float, stock: int, description:
             if not new_product:
                 return "Échec de la création du produit sur le serveur Yaburu."
             
-            # 3. Vider le tampon d'images après succès
+            # 3. Stocker le produit en base de données locale
+            local_store_id = store_id_ctx.get()
+            if local_store_id:
+                import uuid as _uuid
+                local_product = Product(
+                    boutique_id=_uuid.UUID(local_store_id),
+                    type_produit=normalized_type,
+                    nom=name,
+                    description=description,
+                    prix=price,
+                    quantite=stock,
+                    chemin_fichier=image_paths[0] if image_paths else None
+                )
+                db.add(local_product)
+                logger.info(f"💾 Produit '{name}' enregistré localement pour la boutique {local_store_id}")
+            
+            # 4. Vider le tampon d'images après succès
             if media_list:
                 await db.execute(delete(PendingMedia).where(PendingMedia.phone == phone))
-                await db.commit()
-                logger.info(f"🧹 Tampon d'images vidé pour {phone}")
+            
+            await db.commit()
             
             return f"Succès ! Le produit '{name}' a été créé avec {len(image_paths)} image(s)."
             

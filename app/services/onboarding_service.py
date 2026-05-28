@@ -15,6 +15,7 @@ from app.services.whatsapp_service import whatsapp_service
 logger = logging.getLogger(__name__)    
 
 class OnboardingService:
+    
     """
     Gère le flux d'identification et d'onboarding des utilisateurs WhatsApp.
     """
@@ -146,18 +147,19 @@ class OnboardingService:
         token = secrets.token_urlsafe(32)
         
         # Désactiver les anciennes sessions
+        from app.models.stores import store as StoreModel
+        store_ids_subquery = select(StoreModel.id).where(StoreModel.utilisateur_id == user_id).scalar_subquery()
         await db.execute(
             Session.__table__.update()
-            .where(Session.user_id == user_id)
-            .values(is_active=False)
+            .where(Session.boutique_id.in_(store_ids_subquery))
+            .values(est_active=False)
         )
         
         new_session = Session(
-            user_id=user_id,
-            store_id=store_id,
+            boutique_id=store_id,
             session_token=token,
-            is_active=True,
-            expires_at=datetime.utcnow() + timedelta(hours=24)
+            est_active=True,
+            expire_le=datetime.utcnow() + timedelta(hours=24)
         )
         db.add(new_session)
 

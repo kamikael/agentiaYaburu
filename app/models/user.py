@@ -2,45 +2,68 @@ from sqlalchemy import (
     Column, String, Integer, Boolean, Text, DateTime, ForeignKey,
     Numeric
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.sql import func
 
 import uuid
 
-
 from app.db import Base
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "utilisateur"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    phone_number = Column(String(20), unique=True, nullable=False)
+    # Colonnes physiques (noms conformes à l'UML)
+    telephone = Column(String(20), unique=True, nullable=False)
     email = Column(String(255), unique=True)
+    prenom = Column(String(100))
+    nom = Column(String(100))
+    integration_etape = Column(String(50), default="boutique_en_attente")
+    derniere_vue = Column(DateTime)
+    langue = Column(String(10), default="fr")
+    date_creation = Column(DateTime, server_default=func.now())
+    date_mise_a_jour = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    date_suppression = Column(DateTime)
+    traitement_en_cours = Column(Boolean, default=False, nullable=False)
 
-    # Profil
-    first_name = Column(String(100))
-    last_name = Column(String(100))
-
-    # Métadonnées
-    language_preference = Column(String(10), default="fr")
+    # Métadonnées additionnelles héritées de la version précédente
     timezone = Column(String(50), default="Africa/Porto-Novo")
-
-    last_seen_at = Column(DateTime)
-
-    # Onboarding
-    onboarding_step = Column(String(50), default="waiting_for_store")
     temp_email = Column(String(255))
 
-    # Timestamps
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    deleted_at = Column(DateTime)
+    # Synonymes pour compatibilité totale avec le code existant en Python
+    phone_number = synonym("telephone")
+    first_name = synonym("prenom")
+    last_name = synonym("nom")
+    onboarding_step = synonym("integration_etape")
+    last_seen_at = synonym("derniere_vue")
+    language_preference = synonym("langue")
+    created_at = synonym("date_creation")
+    updated_at = synonym("date_mise_a_jour")
+    deleted_at = synonym("date_suppression")
 
     # Relations
-    conversations = relationship("Conversation", back_populates="user")
     stores = relationship("store", back_populates="user")
-    messages = relationship("Message", back_populates="user")
-    sessions = relationship("Session", back_populates="user")
 
+    # Propriétés dynamiques pour conserver la compatibilité sans mappers complexes
+    @property
+    def sessions(self):
+        sessions_list = []
+        for s in self.stores:
+            sessions_list.extend(s.sessions)
+        return sessions_list
+
+    @property
+    def conversations(self):
+        convs_list = []
+        for s in self.stores:
+            convs_list.extend(s.conversations)
+        return convs_list
+
+    @property
+    def messages(self):
+        msgs_list = []
+        for c in self.conversations:
+            msgs_list.extend(c.messages)
+        return msgs_list

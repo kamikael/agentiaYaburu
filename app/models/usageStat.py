@@ -17,8 +17,8 @@ class UsageStat(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    store_id = Column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("utilisateur.id", ondelete="CASCADE"), nullable=False)
+    store_id = Column(UUID(as_uuid=True), ForeignKey("boutique.id", ondelete="SET NULL"))
 
     period_start = Column(DateTime, nullable=False)
     period_end = Column(DateTime, nullable=False)

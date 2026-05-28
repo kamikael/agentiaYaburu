@@ -150,10 +150,13 @@ class YaburuService:
         url = f"{self.base_url}/tools/stores/{store_id}/stats"
         return await self._make_get_request(url)
 
-    async def get_store_orders(self, store_id: str) -> Optional[List[Dict[str, Any]]]:
-        """Récupère les commandes d'une boutique"""
+    async def get_store_orders(self, store_id: str, name_product: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
+        """Récupère les commandes d'une boutique, potentiellement filtrées par nom de produit"""
         url = f"{self.base_url}/tools/stores/{store_id}/orders"
-        return await self._make_get_request(url)
+        params = {}
+        if name_product:
+            params["name_product"] = name_product
+        return await self._make_get_request(url, params=params if params else None)
 
     async def get_store_products(self, store_id: str) -> Optional[List[Dict[str, Any]]]:
         """Récupère les produits d'une boutique"""
@@ -175,16 +178,22 @@ class YaburuService:
                     # Ici pour le test, on va juste envoyer un contenu factice si le fichier n'existe pas
                     try:
                         files.append(("images[]", (f"product_{i}.jpg", open(path, "rb"), "image/jpeg")))
-                    except:
+                    except Exception as e:
+                        logger.error(f"❌ Erreur lors de l'ouverture de l'image {path} : {str(e)}")
                         # Fallback simulation
                         files.append(("images[]", (f"product_{i}.jpg", b"fake_image_content", "image/jpeg")))
+
+            headers = await self._get_headers()
+            # Pour un envoi multipart (avec fichiers), on laisse httpx définir lui-même le Content-Type avec le boundary correct.
+            if "Content-Type" in headers:
+                del headers["Content-Type"]
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     url,
                     data=data, # Données de formulaire
                     files=files, # Fichiers
-                    headers=await self._get_headers()
+                    headers=headers
                 )
                 
                 if response.status_code in [200, 201]:

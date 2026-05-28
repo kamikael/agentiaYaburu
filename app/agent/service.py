@@ -54,11 +54,13 @@ class CustomAgentExecutor:
             | self.llm
         )
 
-    async def get_response(self, text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None) -> str:
+    async def get_response(self, text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None,
+                    image: Optional[dict] = None) -> str:
+        """Méthode d'entrée pour obtenir une réponse de l'agent."""
         """Alias pour invoke() pour compatibilité avec le reste de l'application."""
-        return await self.invoke(text, store_id, conversation_id, user_id, phone)
+        return await self.invoke(text, store_id, conversation_id, user_id, phone, image)
 
-    async def invoke(self, input_text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None) -> str:
+    async def invoke(self, input_text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None, image: Optional[dict] = None) -> str:
         # ContextVar pour que les outils accèdent aux infos sans paramètre LLM
         store_id_ctx.set(store_id)
         if phone:
@@ -74,10 +76,9 @@ class CustomAgentExecutor:
             
             agent_scratchpad = []
             iterations = 0
-            
+
             while iterations < self.max_iterations:
                 iterations += 1
-                
                 # Appeler le LLM
                 prediction = await self.agent.ainvoke({
                     "input": input_text,
@@ -117,7 +118,7 @@ class CustomAgentExecutor:
                         content=str(tool_result),
                         tool_call_id=call_id
                     ))
-            return "Désolé, j'ai atteint ma limite de réflexion sans trouver de réponse."
+            return "Désolé, j'ai atteint ma limite de réflexion veillez reposer votre question de manière plus concise ou essayez de nouveau."
 
     async def _execute_tool(self, name: str, args: dict) -> str:
         """Exécute un outil par son nom avec gestion d'erreurs."""
@@ -169,7 +170,7 @@ class CustomAgentExecutor:
             res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
             record = res.scalar_one_or_none()
             if record: record.full_context = json_data
-            else: db.add(ConversationHistory(conversation_id=conversation_id, user_id=user_id, full_context=json_data))
+            else: db.add(ConversationHistory(conversation_id=conversation_id, full_context=json_data))
             await db.commit()
         except Exception as e:
             logger.error(f"Error saving history: {e}")

@@ -67,6 +67,15 @@ async def main():
             if not user_input:
                 continue
 
+            # Simulation d'envoi d'image
+            if user_input.startswith('/image'):
+                parts = user_input.split(' ', 1)
+                media_id = parts[1] if len(parts) > 1 else "simulated_image_id_123"
+                print(f"📸 Simulation d'envoi d'image (ID: {media_id})...")
+                await webhook_router.handle_media_message(phone, media_id, "image")
+                print("✅ Image ajoutée au tampon du système.")
+                continue
+
             print("⏳ Vérification Yaburu & Routage...")
             
             # route_message s'occupe de tout le nouveau flux

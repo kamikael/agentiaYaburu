@@ -11,17 +11,19 @@ class AgentDispatcher:
     Service chargé de coordonner l'appel à l'agent et l'envoi de la réponse via WhatsApp.
     """
 
-    async def handle_agent_message(self, session: Session, phone: str, text: str, conversation_id: str):
+    async def handle_agent_message(self, session: Session, phone: str, text: str, conversation_id: str, user_id: str, image: Optional[dict] = None):
         """
         Traite un message utilisateur via l'agent IA.
+        Recevant explicitement l'ID utilisateur (user_id) depuis le routeur.
         """
         # 1. Obtenir la réponse de l'agent
         response_text = await agent_service.get_response(
-            user_id=str(session.user_id),
+            user_id=user_id,
             store_id=str(session.store_id),
             conversation_id=conversation_id,
             text=text,
-            phone=phone
+            phone=phone,
+            image=image,
         )
         
         # 2. Envoyer la réponse via WhatsApp (Simulation console pour l'instant)

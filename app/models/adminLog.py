@@ -16,7 +16,7 @@ class AdminLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    admin_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    admin_user_id = Column(UUID(as_uuid=True), ForeignKey("utilisateur.id", ondelete="SET NULL"))
 
     action_type = Column(String(100), nullable=False)
     target_type = Column(String(50))

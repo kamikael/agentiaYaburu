@@ -4,7 +4,8 @@ import logging
 import json
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
-from app.schemas.webhook import WebhookPayload, MessageType
+from app.schemas.webhook import Payload
+import json
 from app.services.webhook_router import webhook_router
 from config import settings 
 
@@ -73,55 +74,161 @@ def verify_whatsapp_signature(request_body: bytes, signature_header: str) -> boo
         return False
 
 @app.post("/api/v1/webhooks/whatsapp")
+#https://glazing-squishier-talisman.ngrok-free.dev/api/v1/webhooks/whatsapp
 async def receive_webhook(request: Request):
     """
-    Réception des événements WhatsApp (POST).
+    Réception des événements WhatsApp (POST)
     """
+    
     signature_header = request.headers.get("X-Hub-Signature-256", "")
     request_body = await request.body()
-    
-    # Validation de signature (désactivée en dev local si pas de secret)
+
+    # Validation signature (optionnel)
     # if WHATSAPP_APP_SECRET != "votre_secret_app_meta":
-    #    if not verify_whatsapp_signature(request_body, signature_header):
-    #        logger.error("❌ Signature invalide")
-    #        raise HTTPException(status_code=403, detail="Invalid signature")
-    
+    #     if not verify_whatsapp_signature(request_body, signature_header):
+    #         logger.error("❌ Signature invalide")
+    #         raise HTTPException(status_code=403, detail="Invalid signature")
+
     try:
         body_json = json.loads(request_body)
-        payload = WebhookPayload(**body_json)
+
+        # Validation Pydantic avec tes schémas
+        payload = Payload(**body_json)
+
     except Exception as e:
         logger.error(f"❌ Erreur parsing Webhook: {str(e)}")
-        # On retourne 200 quand même pour éviter que Meta ne renvoie sans cesse le même message
-        return {"status": "error", "message": "Invalid payload format"}
 
-    # Parcours des entrées et messages
-    for entry in payload.entry:
-        for change in entry.changes:
-            value = change.value
-            if value.messages:
-                for message in value.messages:
-                    phone = message.from_
-                    text = None
-                    interactive_id = None
-                    
-                    if message.type == MessageType.TEXT and message.text:
-                        text = message.text.body
-                    elif message.type == MessageType.IMAGE and message.image:
-                        # Capture de l'image pour le tampon
-                        await webhook_router.handle_media_message(phone, message.image.id, "image")
-                        text = message.image.caption or "[Image reçue]"
-                    elif message.type == MessageType.INTERACTIVE and message.interactive:
-                        if message.interactive.button_reply:
-                            interactive_id = message.interactive.button_reply.id
-                        elif message.interactive.list_reply:
-                            interactive_id = message.interactive.list_reply.id
-                    
-                    # Routage intelligent (Onboarding ou Agent IA)
-                    logger.info(f"📩 Message reçu de {phone}: {text or interactive_id}")
-                    await webhook_router.route_message(
-                        phone=phone,
-                        text=text,
-                        interactive_id=interactive_id
-                    )
+        # IMPORTANT:
+        # WhatsApp renvoie le webhook si on répond autre chose que 200
+        return {
+            "status": "error",
+            "message": "Invalid payload format"
+        }
+
+    try:
+        message_data = payload.data.messages
+        if not message_data or not message_data.key:
+            return {"status": "ok", "message": "No active message data"}
+
+        if message_data.key.fromMe:
+            logger.info("⏭️ Message ignoré : message sortant (fromMe = True)")
+            return {"status": "ok", "message": "Ignored outgoing message"}
+
+        phone = message_data.key.cleanedSenderPn
+        message = message_data.message
+
+        text = None
+        audio = None
+        image = None
+
+        quoted_text = None
+        quoted_image = None
+        quoted_audio = None
+
+        # =========================
+        # MESSAGE TEXTE
+        # Priorité : extendedTextMessage > conversation > messageBody
+        # =========================
+        if hasattr(message, "extendedTextMessage") and message.extendedTextMessage:
+            text = message.extendedTextMessage.text
+        elif hasattr(message, "conversation") and message.conversation:
+            text = message.conversation
+        
+        # Fallback sur messageBody (champ de premier message ou cas particulier)
+        if not text and message_data.messageBody:
+            text = message_data.messageBody
+
+        # =========================
+        # MESSAGE AUDIO
+        # =========================
+        if hasattr(message, "audioMessage") and message.audioMessage:
+            audio = message.audioMessage
+
+        # =========================
+        # MESSAGE IMAGE
+        # =========================
+        if hasattr(message, "imageMessage") and message.imageMessage:
+            image = message.imageMessage
+
+        # =========================
+        # CONTEXT INFO (reply)
+        # =========================
+        context = (
+            getattr(
+                getattr(message, "extendedTextMessage", None),
+                "contextInfo",
+                None
+            )
+            or getattr(
+                getattr(message, "imageMessage", None),
+                "contextInfo",
+                None
+            )
+            or getattr(
+                getattr(message, "audioMessage", None),
+                "contextInfo",
+                None
+            )
+            or getattr(
+                getattr(message, "videoMessage", None),
+                "contextInfo",
+                None
+            )
+        )
+
+        # =========================
+        # MESSAGE REPLY
+        # =========================
+        if context and hasattr(context, "quotedMessage"):
+
+            quoted_message = context.quotedMessage
+
+            # Réponse à un texte simple
+            if hasattr(quoted_message, "conversation"):
+                quoted_text = quoted_message.conversation
+
+            # Réponse à un extendedTextMessage
+            elif (
+                hasattr(quoted_message, "extendedTextMessage")
+                and quoted_message.extendedTextMessage
+            ):
+                quoted_text = quoted_message.extendedTextMessage.text
+
+            # Réponse à une image
+            elif hasattr(quoted_message, "imageMessage"):
+                quoted_image = quoted_message.imageMessage
+
+            # Réponse à un audio
+            elif hasattr(quoted_message, "audioMessage"):
+                quoted_audio = quoted_message.audioMessage
+
+        logger.info(
+            f"""
+📩 Nouveau message WhatsApp
+👤 Téléphone : {phone}
+💬 Texte : {text}
+🎵 Audio : {'Oui' if audio else 'Non'}
+🖼️ Image : {'Oui' if image else 'Non'}
+
+↩️ Réponse texte : {quoted_text}
+🖼️ Réponse image : {'Oui' if quoted_image else 'Non'}
+🎵 Réponse audio : {'Oui' if quoted_audio else 'Non'}
+"""
+        )
+
+        # Exemple de routage
+        await webhook_router.route_message(
+            phone=phone,
+            text=text,
+            audio=audio,
+            image=image,
+            quoted_text=quoted_text,
+            quoted_image=quoted_image,
+            quoted_audio=quoted_audio
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Erreur traitement message: {str(e)}")
 
     return {"status": "ok"}
+
