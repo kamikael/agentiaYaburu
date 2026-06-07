@@ -1,0 +1,95 @@
+@startuml UC4_Commandes_Produit
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC4 — Consulter les Commandes d'un Produit
+
+|#E8F5E9| Marchand |
+|#E3F2FD| Agent IA |
+|#FFF3E0| Yaburu API |
+
+|Marchand|
+start
+:Envoie un message\n**"Commandes du produit [nom]"**\nou **"Voir mes commandes"**;
+
+|Agent IA|
+:Webhook reçu\nDebounce 1.5s;
+:Vérifie session active;
+
+if (Session valide ?) then (Non)
+  :Demande reconnexion;
+  stop
+else (Oui)
+endif
+
+:LLM analyse le message;
+
+if (Nom du produit précisé ?) then (Non)
+  :Demande le nom du produit :\n*"Pour quel produit souhaitez-vous\nvoir les commandes ?"*;
+  |Marchand|
+  :Répond avec le nom du produit;
+  |Agent IA|
+  :Extrait le nom du message;
+else (Oui)
+endif
+
+:Appelle **get_store_orders(name_product)**;
+
+|Yaburu API|
+:Requête GET\n/api/tools/stores/{id}/orders\n?name_product={nom};
+
+if (API disponible ?) then (Erreur)
+  |Agent IA|
+  :Informe le marchand de l'erreur;
+  stop
+else (OK)
+  :Retourne la liste des commandes\nfiltrée par produit;
+endif
+
+|Agent IA|
+if (Aucune commande ?) then (Oui)
+  :Répond\n"Aucune commande pour ce produit";
+  :Ajoute le menu;
+  |Marchand|
+  :Reçoit le message;
+  stop
+else (Non)
+endif
+
+:Compte le nombre de commandes;
+
+if (Nombre ≤ 5 ?) then (Oui)
+  :Affiche **TOUTES** les commandes\nsans question de pagination;
+else (Non)
+  :Affiche les **5 premières** commandes\n(statut · montant · client · date);
+  :Ajoute la question\n*"Souhaitez-vous voir les 5 suivantes ?"*;
+endif
+
+:Appelle **final_answer()**;
+:Ajoute le **menu des capacités**;
+:Sauvegarde l'historique;
+
+|Marchand|
+:Reçoit la liste des commandes\n+ menu;
+
+if (Veut voir la suite ?) then (Oui)
+  |Marchand|
+  :Envoie "Oui" / "Suite";
+  |Agent IA|
+  :Consulte l'historique\npour savoir où il en est;
+  :Affiche les **5 commandes suivantes**;
+else (Non)
+endif
+
+stop
+@enduml

@@ -1,0 +1,71 @@
+@startuml UC5_Changer_Boutique_Sequence
+!theme plain
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+skinparam MaxMessageSize 150
+
+actor "Marchand" as M #LightGreen
+participant "WhatsApp Cloud API" as WA #LightBlue
+participant "Système" as SYS #LightYellow
+database "Base de données" as DB #MediumPurple
+participant "Backend Yaburu" as YB #PeachPuff
+
+autonumber "<b>[00]</b>"
+
+== Étape 1 : Demande de changement ==
+M -> WA : Envoie un message ("Changer de boutique")
+WA -> SYS : POST Webhook de réception de message
+SYS -> DB : Enregistre le message dans MessageQueue
+SYS -> DB : Active le verrou traitement_en_cours = True
+
+note over SYS : Anti-rebond (Debounce 1.5s)\net coalescence
+
+SYS -> DB : Récupère et supprime le message fusionné
+DB --> SYS : Message consolidé
+SYS -> DB : Vérifie l'existence d'une session active (<24h)
+DB --> SYS : Session active trouvée (avec store_id)
+
+SYS -> SYS : Traitement LLM (Gemini)\n→ Détecte intention "Changer de boutique"
+SYS -> YB : Requête GET /api/tools/users?phone={phone}
+YB --> SYS : Utilisateur et liste de ses boutiques (ex: 2 boutiques)
+
+alt Une seule boutique active
+  SYS -> WA : Envoie le message "Aucune autre boutique disponible"
+  WA --> M : "Vous n'avez pas d'autre boutique..."
+else Plusieurs boutiques actives
+  SYS -> WA : Envoie la liste des boutiques numérotées
+  WA --> M : "Voici vos boutiques : 1. Boutique A, 2. Boutique B..."
+end
+
+SYS -> DB : Libère le verrou (traitement_en_cours = False)
+
+== Étape 2 : Sélection de la boutique ==
+M -> WA : Répond avec le choix ("2" ou "Boutique B")
+WA -> SYS : POST Webhook de réception du choix
+SYS -> DB : Enregistre le message dans MessageQueue
+SYS -> DB : Active le verrou traitement_en_cours = True
+
+note over SYS : Anti-rebond (Debounce 1.5s)\net coalescence
+
+SYS -> DB : Récupère et supprime le message fusionné
+DB --> SYS : Choix consolidé
+SYS -> DB : Vérifie l'existence d'une session active (<24h)
+DB --> SYS : Session active trouvée (avec store_id)
+
+SYS -> SYS : Traitement LLM (Gemini)\n→ Identifie la boutique cible ("Boutique B")
+SYS -> DB : Désactive toutes les sessions actives de l'utilisateur
+
+alt Session existante pour Boutique B
+  SYS -> DB : Réactive la session existante (est_active = True)
+else Nouvelle session requise
+  SYS -> DB : Crée une nouvelle session active de 24h
+end
+
+SYS -> SYS : Met à jour les ContextVars (store_id, yaburu_store_id)
+SYS -> DB : Sauvegarde le message dans l'historique
+SYS -> WA : Envoie le message de confirmation + Menu des capacités
+WA --> M : "Vous travaillez maintenant sur Boutique B !" + Menu
+
+SYS -> DB : Libère le verrou (traitement_en_cours = False)
+@enduml

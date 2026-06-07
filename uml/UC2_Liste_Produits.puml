@@ -1,0 +1,78 @@
+@startuml UC2_Liste_Produits
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC2 — Lister les Produits de la Boutique
+
+|#E8F5E9| Marchand |
+|#E3F2FD| Agent IA |
+|#FFF3E0| Yaburu API |
+
+|Marchand|
+start
+:Envoie un message\n**"Liste mes produits"**;
+
+|Agent IA|
+:Webhook reçu\nDebounce 1.5s;
+:Vérifie session active;
+
+if (Session valide ?) then (Non)
+  :Demande connexion / onboarding;
+  stop
+else (Oui)
+endif
+
+:LLM identifie l'intention\n→ **get_store_products()**;
+
+|Yaburu API|
+:Requête GET\n/api/tools/stores/{id}/products;
+:Retourne la liste complète\ndes produits;
+
+|Agent IA|
+if (Résultat vide ?) then (Oui)
+  :Répond\n"Aucun produit dans votre boutique";
+  :Ajoute le menu;
+  |Marchand|
+  :Reçoit le message;
+  stop
+else (Non)
+endif
+
+:Compte le nombre de produits;
+
+if (Nombre de produits ≤ 5 ?) then (Oui)
+  :Affiche **TOUS** les produits\nsans question de pagination;
+else (Non)
+  :Affiche les **5 premiers** produits;
+  :Ajoute la question\n*"Souhaitez-vous voir les 5 suivants ?"*;
+endif
+
+:Appelle **final_answer()**;
+:Ajoute le **menu des capacités**;
+:Sauvegarde l'historique;
+
+|Marchand|
+:Reçoit la liste des produits\n(paginée si > 5) + menu;
+
+if (Veut voir la suite ?) then (Oui)
+  |Marchand|
+  :Envoie "Oui" / "Suite";
+  |Agent IA|
+  :Consulte l'historique\npour savoir où il en est;
+  :Affiche les **5 produits suivants**;
+  :Retourne au marchand;
+else (Non)
+endif
+
+stop
+@enduml

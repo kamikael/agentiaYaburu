@@ -1,0 +1,98 @@
+@startuml UC3_Ajouter_Produit
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC3 — Ajouter un Nouveau Produit
+
+|#E8F5E9| Marchand |
+|#E3F2FD| Agent IA |
+|#E8EAF6| Système (PendingMedia) |
+|#FFF3E0| Yaburu API |
+
+|Marchand|
+start
+:Envoie une **photo** du produit\n(image WhatsApp);
+
+|Système (PendingMedia)|
+:Télécharge et déchiffre l'image\ndepuis WhatsApp;
+:Stocke le fichier dans **tmp/**;
+:Enregistre une entrée\n**PendingMedia** (phone → fichier);
+
+|Agent IA|
+:Webhook reçu — image détectée\n**[Image reçue et enregistrée]**;
+:Debounce 1.5s;
+:LLM détecte l'image\naccuse réception;
+:Demande les informations manquantes :\n📛 Nom · 💰 Prix · 🔢 Stock\n📜 Description · 🏷️ Type;
+
+|Marchand|
+:Envoie les détails du produit\nen langage naturel;
+
+|Agent IA|
+:Webhook reçu — texte\nDebounce 1.5s;
+:LLM extrait les informations\nnaturellement du texte;
+
+if (Toutes les infos réunies ?) then (Non)
+  :Pose une question ciblée\nsur l'info manquante;
+  |Marchand|
+  :Répond à la question;
+  |Agent IA|
+  :Reprend l'extraction;
+else (Oui)
+endif
+
+:Valide le type de produit;
+
+if (Type valide ?) then (Non : ex. numérique)
+  :Explique que ce type\nn'est pas disponible\nPropose "service" comme alternative;
+  |Marchand|
+  :Choisit un type valide;
+  |Agent IA|
+  :Reprend avec le bon type;
+else (Oui : physique / service)
+endif
+
+:Vérifie la présence d'images\ndans **PendingMedia**;
+
+if (Image disponible ?) then (Non)
+  :Demande d'envoyer la photo\navant de créer le produit;
+  stop
+else (Oui)
+endif
+
+:Appelle **create_store_product()**\nSANS demander confirmation;
+
+|Yaburu API|
+:Requête POST\n/api/tools/stores/{id}/products\n(données + image multipart);
+
+if (Création réussie ?) then (Erreur 400/500)
+  |Agent IA|
+  :Informe le marchand\nde l'erreur et du motif;
+  stop
+else (201 Created)
+  :Retourne le produit créé;
+endif
+
+|Système (PendingMedia)|
+:Supprime les entrées\n**PendingMedia** du marchand;
+
+|Agent IA|
+:Enregistre le produit\ndans la base locale;
+:Appelle **final_answer()**\navec message de succès 🎉;
+:Sauvegarde l'historique;
+:Ajoute le **menu des capacités**;
+
+|Marchand|
+:Reçoit la confirmation\nde création du produit + menu;
+
+stop
+@enduml

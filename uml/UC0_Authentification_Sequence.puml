@@ -1,0 +1,86 @@
+@startuml UC0_Authentification_Sequence
+!theme plain
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+skinparam MaxMessageSize 150
+
+actor "Marchand" as M #LightGreen
+participant "API WhatsApp Cloud" as WA #LightBlue
+participant "Système" as SYS #LightYellow
+participant "API Yaburu" as YB #PeachPuff
+
+autonumber "<b>[00]</b>"
+
+== Phase 1 : Premier message du Marchand (Initialisation & Synchronisation) ==
+
+M -> WA : Envoie son premier message (ex: "Bonjour")
+WA -> SYS : POST Webhook de réception du message
+
+SYS -> SYS : Recherche en base de données locale une session active (<24h)
+note right SYS
+  Comme c'est le premier message,
+  aucune session n'est trouvée.
+end note
+
+SYS -> YB : Requête GET /api/tools/users?phone={phone} (Vérification identité)
+YB --> SYS : Données du marchand (Nom, Email, liste des boutiques)
+
+alt Le numéro n'est pas enregistré sur Yaburu (Refus d'accès)
+  SYS -> WA : Envoie le message d'erreur d'accès
+  WA --> M : "Désolé, votre numéro n'est pas associé..."
+else Le numéro est enregistré sur Yaburu (Acceptation)
+  SYS -> SYS : Crée le profil User et synchronise ses boutiques en base locale
+end
+
+SYS -> SYS : Enregistre le message dans la file d'attente (MessageQueue)\net active le verrou traitement_en_cours = True
+SYS --> WA : HTTP 200 OK
+WA --> M : (Accusé de réception WhatsApp)
+
+note over SYS : Anti-rebond (Debounce 1.5s)\net coalescence
+
+SYS -> SYS : Récupère et fusionne le message, puis nettoie la file
+SYS -> SYS : Vérifie s'il y a une session active en base locale (Aucune session)
+SYS -> SYS : Récupère la liste des boutiques associées au marchand
+
+alt CAS A : Le marchand possède 1 seule boutique (Connexion automatique)
+  SYS -> SYS : Crée une session active de 24h et passe l'onboarding en 'completed'
+  SYS -> WA : Envoie le message de bienvenue + Menu des capacités
+  WA --> M : "Bienvenue [Nom] ! Votre boutique [NomBoutique] est connectée..."
+else CAS B : Le marchand possède plusieurs boutiques (Sélection obligatoire)
+  SYS -> SYS : Change l'état de l'onboarding en 'waiting_for_store'
+  SYS -> WA : Envoie le menu interactif de sélection de boutique
+  WA --> M : "Plusieurs boutiques associées. 1. Boutique A, 2. Boutique B..."
+end
+
+SYS -> SYS : Libère le verrou (traitement_en_cours = False)
+
+== Phase 2 : Sélection de la boutique (Uniquement en cas de multi-boutiques) ==
+
+M -> WA : Envoie son choix (ex: "2" ou "Boutique B")
+WA -> SYS : POST Webhook de réception du choix
+
+SYS -> SYS : Recherche une session active (Aucune session active)
+SYS -> YB : Requête GET /api/tools/users?phone={phone} (Vérification et mise à jour)
+YB --> SYS : Données du marchand synchronisées
+SYS -> SYS : Met à jour l'utilisateur et ses boutiques en base locale
+
+SYS -> SYS : Enregistre le choix dans la file d'attente\net active le verrou traitement_en_cours = True
+SYS --> WA : HTTP 200 OK
+
+note over SYS : Anti-rebond (Debounce 1.5s)
+
+SYS -> SYS : Récupère le choix de la file et vérifie la session (Aucune session)
+
+SYS -> SYS : Analyse de la réponse (onboarding_step == 'waiting_for_store')
+alt Le choix correspond à une boutique valide (Boutique B)
+  SYS -> SYS : Crée une session active de 24h et passe l'onboarding en 'completed'
+  SYS -> WA : Envoie message de confirmation + Menu des capacités
+  WA --> M : "Parfait ! Vous êtes connecté à *Boutique B*. Comment puis-je vous aider ?"
+else Le choix est invalide ou non reconnu
+  SYS -> WA : Envoie message d'erreur et renvoie le menu interactif
+  WA --> M : "⚠️ Choix non reconnu. Veuillez répondre par le numéro..."
+end
+
+SYS -> SYS : Libère le verrou (traitement_en_cours = False)
+@enduml

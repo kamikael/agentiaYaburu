@@ -1,0 +1,58 @@
+@startuml UC1_Statistiques
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC1 — Consulter les Statistiques de la Boutique
+
+|#E8F5E9| Marchand |
+|#E3F2FD| Agent IA |
+|#FFF3E0| Yaburu API |
+
+|Marchand|
+start
+:Envoie un message\n**"Montre-moi mes stats"**;
+
+|Agent IA|
+:Webhook reçu\nDebounce 1.5s (fenêtre de silence);
+:Vérifie session active\net identité utilisateur;
+
+if (Utilisateur authentifié ?) then (Non)
+  :Répond\n"Numéro non associé à un compte";
+  stop
+else (Oui)
+endif
+
+:LLM identifie l'intention\n→ **get_store_stats()**;
+
+|Yaburu API|
+:Requête GET\n/api/tools/stores/{id}/stats;
+
+if (API disponible ?) then (Erreur)
+  |Agent IA|
+  :Retourne message d'erreur\nar l'utilisateur;
+  stop
+else (OK)
+  :Retourne les statistiques\n(CA, produits, commandes, clients);
+endif
+
+|Agent IA|
+:Formate les statistiques\nen message WhatsApp structuré\n📈 CA · 📦 Produits · 🛒 Commandes;
+:Appelle **final_answer()**;
+:Sauvegarde l'historique\nen arrière-plan;
+:Ajoute le **menu des capacités**\nen pied de message;
+
+|Marchand|
+:Reçoit les statistiques\nformatées + menu;
+
+stop
+@enduml

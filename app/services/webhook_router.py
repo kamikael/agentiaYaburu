@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from sqlalchemy import select, and_
 from app.db import AsyncSessionLocal
 from app.models.user import User
@@ -13,6 +13,10 @@ from app.services.agent_dispatcher import agent_dispatcher
 from app.services.whatsapp_service import whatsapp_service
 
 logger = logging.getLogger(__name__)
+
+# Cache en mémoire : évite de rappeler check_user dans queue_processor
+# Clé : phone, Valeur : yaburu_data déjà récupéré par webhook_router
+yaburu_data_cache: Dict[str, Any] = {}
 
 class WebhookRouter:
     
@@ -48,6 +52,13 @@ class WebhookRouter:
 
         # Si c'est un message de type image, on le télécharge et on l'enregistre dans pending_media
         if image:
+            # S'assurer qu'un texte est défini pour alerter l'agent, même s'il n'y a pas de caption
+            if not text:
+                text = "[Image reçue]"
+            elif "[Image reçue]" not in text:
+                # S'il y a déjà un texte (ex: caption), on ajoute l'indicateur d'image
+                text = f"{text}\n[Image reçue]"
+
             image_url = getattr(image, "url", None) or (image.get("url") if isinstance(image, dict) else None)
             if image_url:
                 try:
@@ -66,12 +77,12 @@ class WebhookRouter:
                         db.add(pending)
                         await db.commit()
                         logger.info(f"💾 Média image {pending.id} téléchargé et mis en attente pour {phone}")
-                    
-                    # 3. Si aucun texte n'accompagne l'image, on définit un texte par défaut pour que l'agent soit invoqué
-                    if not text:
-                        text = "[Image reçue et enregistrée]"
+                        # Mettre à jour le texte pour indiquer que l'enregistrement a réussi
+                        text = text.replace("[Image reçue]", "[Image reçue et enregistrée]")
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de l'enregistrement du média image: {str(e)}")
+                    text = text.replace("[Image reçue]", "[Tentative de réception d'image échouée]")
+
 
         # Si c'est un message de réponse (reply), on pré-formate le texte cité directement à la fin du texte principal
         quoted_prefix = ""
@@ -100,18 +111,54 @@ class WebhookRouter:
         if quoted_prefix:
             text = f"{text or ''}{quoted_prefix}".strip()
 
-        # 1. Vérifier d'abord si c'est un utilisateur Yaburu
-        from app.services.yaburu_service import yaburu_service
-        yaburu_data = await yaburu_service.check_user(phone)
+        # 1. Vérifier d'abord s'il y a une session active en base locale
+        has_active_session = False
+        yaburu_data = None
         
-        if not yaburu_data:
-            logger.warning(f"🚫 Accès refusé pour {phone}. Non trouvé sur Yaburu.")
-            await whatsapp_service.send_text_message(phone, "Désolé, votre numéro n'est pas associé à un compte Yaburu actif. Veuillez contacter le support si c'est une erreur.")
-            return "ACCESS_DENIED"
+        async with AsyncSessionLocal() as db:
+            from app.models.stores import store as StoreModel
+            from sqlalchemy.orm import selectinload
+            session_result = await db.execute(
+                select(Session)
+                .options(selectinload(Session.store))
+                .join(StoreModel, Session.boutique_id == StoreModel.id)
+                .join(User, StoreModel.utilisateur_id == User.id)
+                .where(
+                    and_(
+                        User.telephone == phone,
+                        Session.est_active == True,
+                        Session.expire_le > datetime.utcnow()
+                    )
+                ).order_by(Session.date_creation.desc())
+            )
+            active_sessions = session_result.scalars().all()
+            if active_sessions:
+                has_active_session = True
+
+        if not has_active_session:
+            # Si aucune session active locale n'est trouvée, passer par la vérification / authentification externe Yaburu
+            logger.info(f"ℹ️ Aucune session active locale pour {phone}. Authentification auprès de Yaburu API...")
+            from app.services.yaburu_service import yaburu_service
+            yaburu_data = await yaburu_service.check_user(phone)
+            
+            if not yaburu_data:
+                logger.warning(f"🚫 Accès refusé pour {phone}. Non trouvé sur Yaburu.")
+                await whatsapp_service.send_text_message(phone, "Désolé, votre numéro n'est pas associé à un compte Yaburu actif. Veuillez contacter le support si c'est une erreur.")
+                return "ACCESS_DENIED"
 
         async with AsyncSessionLocal() as db:
-            # 2. Synchroniser ou créer l'utilisateur et ses boutiques
-            user = await onboarding_service.handle_user_connection(db, phone, yaburu_data)
+            user = None
+            if not has_active_session:
+                # 2. Synchroniser ou créer l'utilisateur et ses boutiques uniquement si pas de session active
+                user = await onboarding_service.handle_user_connection(db, phone, yaburu_data)
+            else:
+                # Récupérer l'utilisateur existant en base locale
+                user_res = await db.execute(select(User).where(User.telephone == phone))
+                user = user_res.scalar_one_or_none()
+                
+            if not user:
+                logger.error(f"❌ Utilisateur introuvable en base pour le numéro {phone}.")
+                return "ERROR"
             
             # 3. Enregistrer le prompt dans la file d'attente
             queued_msg = MessageQueue(phone=phone, text=text)
@@ -130,6 +177,10 @@ class WebhookRouter:
             active_processors.add(phone)
             user.traitement_en_cours = True
             await db.commit()
+
+        # Mettre en cache les données Yaburu déjà récupérées pour éviter un 2ème appel HTTP dans queue_processor
+        if yaburu_data:
+            yaburu_data_cache[phone] = yaburu_data
 
         # 5. Lancer le processeur de file asynchrone en arrière-plan
         from app.services.queue_processor import process_user_queue

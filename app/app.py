@@ -149,6 +149,9 @@ async def receive_webhook(request: Request):
         # =========================
         if hasattr(message, "imageMessage") and message.imageMessage:
             image = message.imageMessage
+            # Extraire la légende (caption) de l'image s'il y en a une et qu'aucun texte n'est défini
+            if not text and hasattr(image, "caption") and image.caption:
+                text = image.caption
 
         # =========================
         # CONTEXT INFO (reply)

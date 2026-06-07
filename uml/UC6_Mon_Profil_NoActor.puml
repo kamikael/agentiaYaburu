@@ -1,0 +1,54 @@
+@startuml UC6_Mon_Profil_NoActor
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC6 — Consulter Mon Profil (Sans Acteur)
+
+start
+:Message reçu par le webhook WhatsApp
+**"Mes informations"** ou **"Mon profil"**;
+
+:Debounce 1.5s;
+
+:Vérifie l'existence d'une session active;
+
+if (Session valide ?) then (Non)
+  :Demande de reconnexion;
+  stop
+else (Oui)
+endif
+
+:LLM identifie l'intention
+→ Appelle **get_store_users()**;
+
+:Requête GET /api/tools/users?phone={phone};
+
+if (API disponible ?) then (Erreur)
+  :Informe le marchand de l'erreur technique;
+  stop
+else (OK)
+  :Retourne le profil complet :
+  nom · email · boutiques · abonnement;
+endif
+
+:Formate les informations en message WhatsApp structuré :
+👤 Nom · 📧 Email · 🏪 Boutique(s) · 📅 Créé le;
+
+:Appelle **final_answer()**;
+
+:Sauvegarde l'historique de conversation;
+
+:Ajoute le **menu des capacités**;
+
+stop
+@enduml

@@ -1,0 +1,57 @@
+@startuml UC4_Commandes_Produit_NoActor
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC4 — Consulter les Commandes d'un Produit (Sans Acteur)
+
+start
+:Message reçu par le webhook WhatsApp
+**"Commandes du produit [nom]"**;
+
+:Debounce 1.5s;
+
+:Vérifie la session active et l'identité;
+
+if (Utilisateur authentifié ?) then (Non)
+  :Répond "Numéro non associé à un compte";
+  stop
+else (Oui)
+endif
+
+:LLM identifie le produit ciblé
+→ Appelle **get_product_orders()**;
+
+:Requête GET /api/tools/stores/{id}/orders?product_name={nom};
+
+if (API disponible ?) then (Erreur)
+  :Retourne un message d'erreur technique;
+  stop
+else (OK)
+  :Retourne la liste des commandes filtrée;
+endif
+
+if (Nombre de commandes > 5 ?) then (Oui)
+  :Formate les 5 premières commandes;
+  :Ajoute un bouton / mot-clé interactive **"Voir plus"**;
+else (Non)
+  :Formate l'intégralité des commandes;
+endif
+
+:Appelle **final_answer()**;
+
+:Sauvegarde l'historique de conversation;
+
+:Ajoute le **menu des capacités**;
+
+stop
+@enduml

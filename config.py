@@ -3,6 +3,7 @@
 
 import os
 from functools import lru_cache
+import openai
 from pydantic_settings import BaseSettings
 from typing import Optional
 from dotenv import load_dotenv
@@ -40,10 +41,10 @@ class Settings(BaseSettings):
     
     # ============ GOOGLE GEMINI ============
     GEMINI_API_KEY: str = str(os.getenv("GEMINI_API_KEY"))
-    GEMINI_MODEL: str = "google/gemini-2.0-flash-001"
+    GEMINI_MODEL: str = "google/gemini-2.5-flash"
     GEMINI_TEMPERATURE: float = 0.7
     GEMINI_MAX_TOKENS: int = 1024
-    AGENT_MAX_HISTORY: int = 10  # Nombre de messages max à conserver dans le contexte
+    AGENT_MAX_HISTORY: int = 6  # Nombre de messages max à conserver dans le contexte (réduit pour accélérer le LLM)
     GEMINI_TIMEOUT: int = 30
     
     # ============ OPENROUTER ============
@@ -64,7 +65,7 @@ class Settings(BaseSettings):
     RAG_SIMILARITY_THRESHOLD: float = 0.5
     
     # ============ MONITORING & LOGGING ============
-    LOG_LEVEL: str = "DEBUG"
+    LOG_LEVEL: str = "INFO"
     SENTRY_DSN: Optional[str] = None
     DATADOG_API_KEY: Optional[str] = None
     DATADOG_APP_KEY: Optional[str] = None

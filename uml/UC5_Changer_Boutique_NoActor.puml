@@ -1,0 +1,68 @@
+@startuml UC5_Changer_Boutique_NoActor
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC5 — Changer de Boutique Active (Sans Acteur)
+
+start
+:Message reçu par le webhook WhatsApp
+**"Changer de boutique"**;
+
+:Debounce 1.5s;
+
+:Appelle **get_store_users()**
+(GET /api/tools/users?phone={phone});
+
+if (Utilisateur a 1 seule boutique ?) then (Oui)
+  :Répond qu'il n'y a pas d'autre boutique disponible;
+  :Ajoute le menu des capacités;
+  stop
+else (Non : plusieurs boutiques)
+endif
+
+:Affiche la liste des boutiques disponibles
+numérotées avec demande de choix;
+stop
+
+    note right
+      L'Agent s'arrête ici et attend
+      la réponse du Marchand.
+    end note
+
+:Réception de la réponse du Marchand
+(Nom ou Numéro de la boutique);
+
+:Debounce 1.5s;
+
+:LLM identifie le choix du marchand;
+
+:Appelle **change_store(name_store)**;
+
+:Désactive TOUTES les sessions actives de l'utilisateur;
+
+if (Session existante en base pour cette boutique ?) then (Oui)
+  :Réactive la session existante;
+else (Non)
+  :Crée une nouvelle session (token 24h);
+endif
+
+:Met à jour les ContextVars (store_id, yaburu_store_id);
+
+:Appelle **final_answer()**
+confirmant le changement 🏪;
+
+:Sauvegarde l'historique de conversation;
+:Ajoute le **menu des capacités**;
+stop
+
+@enduml

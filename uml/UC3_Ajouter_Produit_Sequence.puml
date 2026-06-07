@@ -1,0 +1,57 @@
+@startuml UC3_Ajouter_Produit_Sequence
+!theme plain
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+skinparam MaxMessageSize 150
+
+actor "Marchand" as M #LightGreen
+participant "WhatsApp Cloud API" as WA #LightBlue
+participant "Système" as SYS #LightYellow
+database "Base de données" as DB #MediumPurple
+participant "Backend Yaburu" as YB #PeachPuff
+
+autonumber "<b>[00]</b>"
+
+== Étape 1 : Envoi de l'image (Prétraitement) ==
+M -> WA : Envoie une photo du produit
+WA -> SYS : POST Webhook de réception d'image
+SYS -> WA : Télécharge le fichier image
+WA --> SYS : Flux binaire image
+SYS -> DB : Enregistre le média temporaire dans pending_media
+SYS --> WA : HTTP 200 OK
+WA --> M : (Accusé de réception WhatsApp)
+
+== Étape 2 : Envoi de la description et Création ==
+M -> WA : Envoie la description ("Crée la robe rouge à 15000 FCFA")
+WA -> SYS : POST Webhook de réception de texte
+SYS -> DB : Enregistre le message dans MessageQueue
+SYS -> DB : Active le verrou traitement_en_cours = True
+
+note over SYS : Anti-rebond (Debounce 1.5s)\net coalescence
+
+SYS -> DB : Récupère et supprime le message fusionné
+DB --> SYS : Message consolidé
+SYS -> DB : Vérifie l'existence d'une session active (<24h)
+DB --> SYS : Session active trouvée (avec store_id)
+
+SYS -> SYS : Traitement LLM (Gemini)\n→ Extrait le nom ("robe rouge") et prix (15000)
+SYS -> DB : Recherche une image dans pending_media pour ce numéro
+
+alt Image temporaire trouvée
+  DB --> SYS : Chemin du fichier image local
+  SYS -> YB : Requête POST /api/tools/stores/{id}/products (avec image)
+  YB --> SYS : Produit créé avec succès
+  SYS -> DB : Supprime le média de pending_media
+  SYS -> SYS : LLM génère le message de confirmation
+else Image absente
+  DB --> SYS : Aucun média en attente
+  SYS -> SYS : LLM indique que la photo est obligatoire pour créer
+end
+
+SYS -> DB : Sauvegarde le message dans l'historique
+SYS -> WA : Envoie la confirmation + Menu des capacités
+WA --> M : Reçoit la confirmation de création + Menu des capacités
+
+SYS -> DB : Libère le verrou (traitement_en_cours = False)
+@enduml

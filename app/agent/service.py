@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import uuid
@@ -6,7 +7,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnableSerializable
-
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.tools import AVAILABLE_TOOLS, TOOL_LIST
 from config import settings
 from app.db import AsyncSessionLocal
@@ -23,15 +24,18 @@ class CustomAgentExecutor:
     """
     Exécuteur d'agent robuste avec gestion dynamique des outils.
     """
-    def __init__(self, max_iterations: int = 5):
+    def __init__(self, max_iterations: int = 3):
         self.max_iterations = max_iterations
+        # Références aux tâches de fond pour éviter que le GC les détruise avant exécution
+        self._background_tasks: set = set()
         # On lie les outils au modèle
         self.llm = ChatOpenAI(
             model=settings.GEMINI_MODEL,
             openai_api_key=settings.OPENROUTER_API_KEY,
             openai_api_base=settings.OPENROUTER_URL,
-            temperature=settings.GEMINI_TEMPERATURE
-        ).bind_tools(TOOL_LIST, tool_choice="any")
+            temperature=settings.GEMINI_TEMPERATURE,
+            max_tokens=settings.GEMINI_MAX_TOKENS
+        ).bind_tools(TOOL_LIST, tool_choice="auto")
 #         self.llm = ChatGoogleGenerativeAI(
 #     model=settings.GEMINI_MODEL,
 #     google_api_key=settings.GEMINI_API_KEY,
@@ -65,60 +69,80 @@ class CustomAgentExecutor:
         store_id_ctx.set(store_id)
         if phone:
             phone_number_ctx.set(phone)
-        
-        async with AsyncSessionLocal() as db:
-            # 1. Chargement contexte (User, store, History)
-            user_name, store_name, yaburu_store_id = await self._get_context_info(db, user_id, store_id)
-            if yaburu_store_id:
-                yaburu_store_id_ctx.set(yaburu_store_id)
-            
-            chat_history = await self._load_history(db, conversation_id, user_id)
-            
-            agent_scratchpad = []
-            iterations = 0
 
-            while iterations < self.max_iterations:
-                iterations += 1
-                # Appeler le LLM
-                prediction = await self.agent.ainvoke({
-                    "input": input_text,
-                    "chat_history": chat_history,
-                    "agent_scratchpad": agent_scratchpad,
-                    "user_name": user_name,
-                    "store_name": store_name
-                })
-                
-                logger.debug(f"🤖 [Iteration {iterations}] LLM output: {prediction}")
+        # 1. Chargement contexte en parallèle
+        # Chaque méthode ouvre sa propre session DB indépendante (sécurité asyncio.gather)
+        (user_name, store_name, yaburu_store_id), chat_history = await asyncio.gather(
+            self._get_context_info(user_id, store_id),
+            self._load_history(conversation_id)
+        )
+        if yaburu_store_id:
+            yaburu_store_id_ctx.set(yaburu_store_id)
 
-                if not prediction.tool_calls:
-                    # Sécurité si tool_choice="any" n'est pas respecté
-                    return prediction.content
+        agent_scratchpad = []
+        iterations = 0
+        MAX_LLM_RETRIES = 3
 
-                agent_scratchpad.append(prediction)
-                
-                # Traitement des appels d'outils
-                for tool_call in prediction.tool_calls:
-                    name = tool_call["name"]
-                    args = tool_call["args"]
-                    call_id = tool_call["id"]
-                    
-                    # Détection Arrêt : final_answer
-                    if name == "final_answer":
-                        final_text = args.get("answer", "Erreur: pas de réponse générée.")
-                        # Persistance finale
-                        chat_history.extend([HumanMessage(content=input_text), AIMessage(content=final_text)])
-                        await self._save_history(db, conversation_id, user_id, chat_history)
-                        return final_text
-                    
-                    # Exécution dynamique
-                    tool_result = await self._execute_tool(name, args)
-                    
-                    # Injection du résultat dans le scratchpad
-                    agent_scratchpad.append(ToolMessage(
-                        content=str(tool_result),
-                        tool_call_id=call_id
-                    ))
-            return "Désolé, j'ai atteint ma limite de réflexion veillez reposer votre question de manière plus concise ou essayez de nouveau."
+        while iterations < self.max_iterations:
+            iterations += 1
+
+            # Appel LLM avec retry automatique sur erreur 429 (rate limit)
+            prediction = None
+            for attempt in range(MAX_LLM_RETRIES):
+                try:
+                    prediction = await self.agent.ainvoke({
+                        "input": input_text,
+                        "chat_history": chat_history,
+                        "agent_scratchpad": agent_scratchpad,
+                        "user_name": user_name,
+                        "store_name": store_name
+                    })
+                    break  # Succès, on sort du retry
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = "429" in err_str or "rate limit" in err_str.lower() or "provider returned error" in err_str.lower()
+                    if is_rate_limit and attempt < MAX_LLM_RETRIES - 1:
+                        wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                        logger.warning(f"⚠️ [LLM] Rate limit (429) — retry {attempt + 1}/{MAX_LLM_RETRIES - 1} dans {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        # Erreur définitive ou non-429
+                        logger.error(f"❌ [LLM] Erreur définitive après {attempt + 1} tentative(s) : {e}")
+                        return "⏳ Le service est temporairement surchargé. Veuillez réessayer dans quelques secondes."
+
+            if prediction is None:
+                return "⏳ Le service est temporairement surchargé. Veuillez réessayer dans quelques secondes."
+
+            logger.debug(f"🤖 [Iteration {iterations}] LLM output: {prediction}")
+
+            if not prediction.tool_calls:
+                # Réponse directe du LLM (tool_choice="auto") — sauvegarder l'historique aussi
+                self._schedule_history_save(conversation_id, user_id, chat_history, input_text, prediction.content)
+                return prediction.content
+
+            agent_scratchpad.append(prediction)
+
+            # Traitement des appels d'outils
+            for tool_call in prediction.tool_calls:
+                name = tool_call["name"]
+                args = tool_call["args"]
+                call_id = tool_call["id"]
+
+                # Détection Arrêt : final_answer
+                if name == "final_answer":
+                    final_text = args.get("answer", "Erreur: pas de réponse générée.")
+                    self._schedule_history_save(conversation_id, user_id, chat_history, input_text, final_text)
+                    return final_text
+
+                # Exécution dynamique
+                tool_result = await self._execute_tool(name, args)
+
+                # Injection du résultat dans le scratchpad
+                agent_scratchpad.append(ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=call_id
+                ))
+        return "Désolé, j'ai atteint ma limite de réflexion veillez reposer votre question de manière plus concise ou essayez de nouveau."
 
     async def _execute_tool(self, name: str, args: dict) -> str:
         """Exécute un outil par son nom avec gestion d'erreurs."""
@@ -138,42 +162,72 @@ class CustomAgentExecutor:
             logger.error(f"❌ Erreur lors de l'exécution de {name}: {e}")
             return f"Erreur lors de l'exécution de l'outil {name}: {str(e)}"
 
-    async def _get_context_info(self, db, user_id, store_id):
+    async def _get_context_info(self, user_id, store_id):
+        """Ouvre sa propre session pour être sûr avec asyncio.gather."""
         try:
-            u_id = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-            s_id = uuid.UUID(store_id) if isinstance(store_id, str) else store_id
-            
-            user = (await db.execute(select(User).where(User.id == u_id))).scalar_one_or_none()
-            store = (await db.execute(select(StoreModel).where(StoreModel.id == s_id))).scalar_one_or_none()
-            
-            return (
-                user.first_name if user and user.first_name else "Marchand",
-                store.store_name if store and store.store_name else "votre boutique",
-                store.yaburu_store_id if store else None
-            )
+            async with AsyncSessionLocal() as db:
+                u_id = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+                s_id = uuid.UUID(store_id) if isinstance(store_id, str) else store_id
+                
+                user = (await db.execute(select(User).where(User.id == u_id))).scalar_one_or_none()
+                store = (await db.execute(select(StoreModel).where(StoreModel.id == s_id))).scalar_one_or_none()
+                
+                return (
+                    user.first_name if user and user.first_name else "Marchand",
+                    store.store_name if store and store.store_name else "votre boutique",
+                    store.yaburu_store_id if store else None
+                )
         except:
             return "Marchand", "votre boutique", None
 
-    async def _load_history(self, db, conversation_id, user_id):
+    async def _load_history(self, conversation_id):
+        """Ouvre sa propre session pour être sûr avec asyncio.gather."""
         try:
-            res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
-            record = res.scalar_one_or_none()
-            if record and record.full_context:
-                msgs = messages_from_dict(json.loads(record.full_context))
-                return msgs[-settings.AGENT_MAX_HISTORY:]
+            async with AsyncSessionLocal() as db:
+                res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
+                record = res.scalar_one_or_none()
+                if record and record.full_context:
+                    msgs = messages_from_dict(json.loads(record.full_context))
+                    return msgs[-settings.AGENT_MAX_HISTORY:]
         except: pass
         return []
+
+    def _schedule_history_save(self, conversation_id: str, user_id: str, chat_history: list, input_text: str, response_text: str):
+        """
+        Planifie la sauvegarde de l'historique en arrière-plan de manière sûre.
+        Garde une référence forte à la tâche pour éviter que le GC la détruise
+        avant qu'elle s'exécute (comportement documenté de asyncio.create_task).
+        """
+        updated_history = chat_history + [HumanMessage(content=input_text), AIMessage(content=response_text)]
+        task = asyncio.create_task(self._save_history_bg(conversation_id, user_id, updated_history))
+        self._background_tasks.add(task)
+        # Retirer la référence automatiquement quand la tâche est terminée
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _save_history(self, db, conversation_id, user_id, messages):
         try:
             json_data = json.dumps(messages_to_dict(messages))
             res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
             record = res.scalar_one_or_none()
-            if record: record.full_context = json_data
-            else: db.add(ConversationHistory(conversation_id=conversation_id, full_context=json_data))
+            if record:
+                record.full_context = json_data
+            else:
+                db.add(ConversationHistory(conversation_id=conversation_id, full_context=json_data))
             await db.commit()
+            logger.info(f"💾 [HISTORY] Historique sauvegardé pour conversation {conversation_id}")
         except Exception as e:
-            logger.error(f"Error saving history: {e}")
+            logger.error(f"❌ [HISTORY] Erreur sauvegarde : {e}")
+
+    async def _save_history_bg(self, conversation_id, user_id, messages):
+        """
+        Version background de _save_history : ouvre sa propre session DB.
+        Appelée via _schedule_history_save() avec référence forte gardée.
+        """
+        try:
+            async with AsyncSessionLocal() as db:
+                await self._save_history(db, conversation_id, user_id, messages)
+        except Exception as e:
+            logger.error(f"❌ [HISTORY] Erreur sauvegarde en arrière-plan : {e}")
 
 # Instance unique pour l'application
 agent_service = CustomAgentExecutor()

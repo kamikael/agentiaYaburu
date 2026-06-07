@@ -21,7 +21,7 @@ async def process_user_queue(phone: str):
     Worker asynchrone qui traite la file d'attente des messages d'un utilisateur.
     Réalise l'anti-rebond (debounce glissant) et la coalescence (fusion des messages).
     """
-    logger.info(f"⏳ [QUEUE] Démarrage du processeur de file pour {phone}...")
+    logger.info(f" [QUEUE] Démarrage du processeur de file pour {phone}...")
     # Note: phone est déjà ajouté à active_processors par webhook_router avant create_task
     # On s'assure quand même qu'il y est (cas de relance directe)
     active_processors.add(phone)
@@ -30,7 +30,7 @@ async def process_user_queue(phone: str):
         # ── Debounce glissant ─────────────────────────────────────────────────
         # On attend jusqu'à ce qu'aucun nouveau message n'arrive pendant DEBOUNCE_WINDOW secondes.
         # Toutes les POLL_INTERVAL secondes on vérifie si la file a grossi.
-        DEBOUNCE_WINDOW = 3.0   # secondes sans nouveau message avant de traiter
+        DEBOUNCE_WINDOW = 1.5   # secondes sans nouveau message avant de traiter
         POLL_INTERVAL   = 0.5   # fréquence de sondage de la file
         
         last_count = 0
@@ -104,7 +104,17 @@ async def process_user_queue(phone: str):
 
         except Exception as e:
             logger.error(f"❌ [QUEUE] Erreur critique dans le processeur de file pour {phone} : {e}")
-            # En cas d'erreur fatale, s'assurer de libérer le verrou
+            # Notifier l'utilisateur via WhatsApp
+            try:
+                err_str = str(e)
+                if "429" in err_str or "rate limit" in err_str.lower() or "provider returned error" in err_str.lower():
+                    user_msg = "⏳ Le service est momentanément surchargé. Veuillez renvoyer votre message dans quelques secondes."
+                else:
+                    user_msg = "⚠️ Une erreur technique est survenue. Veuillez réessayer dans un instant."
+                await whatsapp_service.send_text_message(phone, user_msg)
+            except Exception as notify_err:
+                logger.error(f"❌ [QUEUE] Impossible d'envoyer le message d'erreur à {phone} : {notify_err}")
+            # Libérer le verrou DB
             try:
                 async with AsyncSessionLocal() as db:
                     user_res = await db.execute(
@@ -120,37 +130,25 @@ async def process_user_queue(phone: str):
     finally:
         # S'assurer de libérer le verrou en mémoire à la toute fin
         active_processors.discard(phone)
+        # Nettoyer le cache Yaburu pour ce numéro (libération mémoire)
+        from app.services.webhook_router import yaburu_data_cache
+        yaburu_data_cache.pop(phone, None)
 
 async def execute_routing_logic(phone: str, text: str):
     """
     Logique de routage similaire à celle du webhook, mais opérant sur le message consolidé.
     """
-    # 1. Vérifier si c'est un utilisateur Yaburu
-    from app.services.yaburu_service import yaburu_service
-    yaburu_data = await yaburu_service.check_user(phone)
-    
-    if not yaburu_data:
-        logger.warning(f"🚫 Accès refusé pour {phone}. Non trouvé sur Yaburu.")
-        await whatsapp_service.send_text_message(
-            phone,
-            "Désolé, votre numéro n'est pas associé à un compte Yaburu actif. Veuillez contacter le support si c'est une erreur."
-        )
-        return
-
     async with AsyncSessionLocal() as db:
-        # 2. Synchroniser ou créer l'utilisateur et ses boutiques
-        user = await onboarding_service.handle_user_connection(db, phone, yaburu_data)
-        
-        # 3. Vérifier s'il y a une session active
+        # 1. Vérifier en premier s'il y a une session active en base locale
         from app.models.stores import store as StoreModel
-        active_session = None
         session_result = await db.execute(
             select(Session)
             .options(selectinload(Session.store))
             .join(StoreModel, Session.boutique_id == StoreModel.id)
+            .join(User, StoreModel.utilisateur_id == User.id)
             .where(
                 and_(
-                    StoreModel.utilisateur_id == user.id,
+                    User.telephone == phone,
                     Session.est_active == True,
                     Session.expire_le > datetime.utcnow()
                 )
@@ -163,11 +161,16 @@ async def execute_routing_logic(phone: str, text: str):
             if len(active_sessions) > 1:
                 logger.warning(f"🧹 Self-Healing : Désactivation de {len(active_sessions) - 1} sessions en doublon.")
                 for s in active_sessions[1:]:
-                    s.is_active = False
+                    s.est_active = False
                 await db.commit()
-        
-        # 4. Gérer la conversation active et router
-        if active_session:
+                
+            # Récupérer l'utilisateur correspondant
+            user_res = await db.execute(
+                select(User).where(User.telephone == phone)
+            )
+            user = user_res.scalar_one_or_none()
+            
+            # Gérer la conversation active et router vers l'Agent
             from app.models.conversations import Conversation
             conv_result = await db.execute(
                 select(Conversation).where(
@@ -195,16 +198,45 @@ async def execute_routing_logic(phone: str, text: str):
                 db.add(conversation)
                 await db.commit()
                 await db.refresh(conversation)
+                is_first_message = True
+            else:
+                is_first_message = False
             
             conversation_id = str(conversation.id)
             conversation.dernier_message_le = datetime.now()
             await db.commit()
 
             if text:
-                logger.info(f"🤖 [QUEUE] Routage du message consolidé vers l'AGENT.")
+                logger.info(f"🤖 [QUEUE] Routage du message consolidé directement vers l'AGENT (Session active bypass).")
                 await agent_dispatcher.handle_agent_message(
-                    active_session, phone, text, conversation_id, str(user.id)
+                    active_session, phone, text, conversation_id, str(user.id),
+                    is_first_message=is_first_message
                 )
-        else:
-            logger.info(f"ℹ️ Pas de session active pour {phone}. Routage vers l'ONBOARDING.")
-            await onboarding_service.process_onboarding_step(db, user, phone, text)
+            return
+
+
+    # 2. Si aucune session active locale n'est trouvée, passer par le processus complet d'authentification externe Yaburu
+    logger.info(f"ℹ️ Pas de session active locale pour {phone}. Authentification requise auprès de Yaburu API...")
+    
+    from app.services.webhook_router import yaburu_data_cache
+    from app.services.yaburu_service import yaburu_service
+    yaburu_data = yaburu_data_cache.get(phone)
+    if not yaburu_data:
+        logger.warning(f"⚠️ [QUEUE] Cache Yaburu manquant pour {phone}, appel HTTP de secours...")
+        yaburu_data = await yaburu_service.check_user(phone)
+
+    if not yaburu_data:
+        logger.warning(f"🚫 Accès refusé pour {phone}. Non trouvé sur Yaburu.")
+        await whatsapp_service.send_text_message(
+            phone,
+            "Désolé, votre numéro n'est pas associé à un compte Yaburu actif. Veuillez contacter le support si c'est une erreur."
+        )
+        return
+
+    async with AsyncSessionLocal() as db:
+        # Synchroniser ou créer l'utilisateur et ses boutiques
+        user = await onboarding_service.handle_user_connection(db, phone, yaburu_data)
+        
+        # Routage vers l'onboarding car il n'y a pas de session active
+        logger.info(f"ℹ️ Routage vers l'ONBOARDING pour {phone}.")
+        await onboarding_service.process_onboarding_step(db, user, phone, text)

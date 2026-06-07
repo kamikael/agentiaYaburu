@@ -1,0 +1,43 @@
+@startuml UC2_Liste_Produits_Sequence
+!theme plain
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+skinparam MaxMessageSize 150
+
+actor "Marchand" as M #LightGreen
+participant "WhatsApp Cloud API" as WA #LightBlue
+participant "Système" as SYS #LightYellow
+database "Base de données" as DB #MediumPurple
+participant "Backend Yaburu" as YB #PeachPuff
+
+autonumber "<b>[00]</b>"
+
+M -> WA : Envoie un message ("Liste mes produits")
+WA -> SYS : POST Webhook de réception de message
+SYS -> DB : Enregistre le message dans MessageQueue
+SYS -> DB : Active le verrou traitement_en_cours = True
+
+note over SYS : Anti-rebond (Debounce 1.5s)\net coalescence
+
+SYS -> DB : Récupère et supprime le message fusionné
+DB --> SYS : Message consolidé
+SYS -> DB : Vérifie l'existence d'une session active (<24h)
+DB --> SYS : Session active trouvée (avec store_id)
+
+SYS -> SYS : Traitement LLM (Gemini)\n→ Détecte intention "Liste mes produits"
+SYS -> YB : Requête GET /api/tools/stores/{id}/products
+YB --> SYS : Liste complète des produits
+
+alt Nombre de produits > 5
+  SYS -> SYS : Formate les 5 premiers produits\net ajoute l'option de pagination "Voir plus"
+else Nombre de produits <= 5
+  SYS -> SYS : Formate toute la liste des produits d'un coup
+end
+
+SYS -> DB : Sauvegarde le message dans l'historique
+SYS -> WA : Envoie le catalogue produit + Menu des capacités
+WA --> M : Reçoit la liste formatée (avec pagination si >5) + Menu
+
+SYS -> DB : Libère le verrou (traitement_en_cours = False)
+@enduml

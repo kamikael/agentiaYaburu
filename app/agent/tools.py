@@ -74,7 +74,12 @@ async def get_store_orders(name_product: Optional[str] = None) -> str:
 
 @tool
 async def get_store_products() -> str:
-    """Récupère la liste de tous les produits disponibles dans votre boutique."""
+    """Récupère la liste complète de tous les produits disponibles dans votre boutique.
+    Cet outil sert aussi à rechercher les informations détaillées d'un produit spécifique :
+    lorsque le marchand demande des informations sur un produit en particulier (prix, stock, description, etc.),
+    appelez cet outil pour obtenir la liste complète, puis identifiez le produit correspondant par son nom
+    dans les résultats retournés et présentez toutes ses informations au marchand.
+    """
     store_id = yaburu_store_id_ctx.get()
     if not store_id:
         return "Erreur : Aucun contexte de boutique trouvé."
@@ -195,11 +200,12 @@ class CreateProductSchema(BaseModel):
     name: str = Field(..., description="Le nom du nouveau produit.")
     price: float = Field(..., description="Le prix de vente du produit.")
     stock: int = Field(..., description="La quantité initiale en stock.")
-    product_type: str = Field(..., description="Le type du produit. Doit être obligatoirement l'un des suivants: 'physique', 'service', ou 'numerique'.")
-    description: Optional[str] = Field(None, description="Une description optionnelle du produit.")
+    product_type: str = Field(..., description="Le type du produit. Doit etre obligatoirement l'un des suivants: 'physique' ou 'service'.")
+    description: str = Field(..., description="La description du produit.")
+    purchase_instructions: str = Field(..., description="Les instructions d'achat (ex: 'Contactez-moi sur WhatsApp pour confirmer la taille').")
 
 @tool(args_schema=CreateProductSchema)
-async def create_store_product(name: str, price: float, stock: int, product_type: str, description: Optional[str] = None) -> str:
+async def create_store_product(name: str, price: float, stock: int, product_type: str, purchase_instructions: str, description: str) -> str:
     """
     Crée un nouveau produit dans la boutique. 
     L'envoi d'au moins une image (précédemment ou simultanément) est strictement obligatoire.
@@ -223,10 +229,10 @@ async def create_store_product(name: str, price: float, stock: int, product_type
             if not image_paths:
                 return "Erreur : Impossible de créer le produit car aucune image n'est disponible. Veuillez d'abord envoyer au moins une photo du produit avant de l'enregistrer."
             
-            # Normalisation du type de produit (le backend Yaburu résout l'ID lui-même)
+            # Normalisation et validation du type de produit
             normalized_type = (product_type or "physique").strip().lower()
-            if normalized_type not in ("physique", "service", "numerique"):
-                return f"Erreur : Le type de produit '{product_type}' n'est pas valide. Les types acceptés sont : physique, service, numerique."
+            if normalized_type not in ("physique", "service"):
+                return f"Erreur : Le type de produit '{product_type}' n'est pas valide. Seuls les types 'physique' et 'service' sont disponibles sur Yaburu pour le moment."
 
             # 2. Appeler le service backend pour créer le produit
             product_data = {
@@ -234,6 +240,7 @@ async def create_store_product(name: str, price: float, stock: int, product_type
                 "price": price,
                 "quantity": stock,
                 "product_type": normalized_type,
+                "purchase_instructions": purchase_instructions,
                 "description": description
             }
             

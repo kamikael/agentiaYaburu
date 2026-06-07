@@ -24,9 +24,12 @@ class WhatsAppService:
     et construit les payloads sortants appropriés pour WASenderAPI.
     """
 
-    # -------------------------------------------------------------------------
-    # MÉTHODES PUBLIQUES D'ENVOI
-    # -------------------------------------------------------------------------
+    def __init__(self):
+        # Client HTTP persistant avec connection pooling
+        self._client = httpx.AsyncClient(
+            timeout=15.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
 
     async def send_text_message(self, to: str, body: str) -> bool:
         """Envoie un message texte simple."""
@@ -117,35 +120,34 @@ class WhatsAppService:
         logger.info(f"📥 [MEDIA] Téléchargement de {media_url} → {file_path}")
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(media_url)
-                if response.status_code == 200:
-                    content = response.content
-                    
-                    # Si une clé média est fournie, on décrypte le contenu
-                    if media_key:
-                        try:
-                            logger.info(f"🔓 [MEDIA] Déchiffrement du média avec la clé fournie...")
-                            media_type = "image"
-                            if "audio" in file_prefix or "voice" in file_prefix:
-                                media_type = "audio"
-                            elif "document" in file_prefix:
-                                media_type = "document"
-                            elif "video" in file_prefix:
-                                media_type = "video"
-                                
-                            content = self._decrypt_media(content, media_key, media_type)
-                            logger.info(f"✅ [MEDIA] Déchiffrement réussi !")
-                        except Exception as dec_err:
-                            logger.error(f"❌ [MEDIA] Échec du déchiffrement : {dec_err}")
-                    
-                    with open(file_path, "wb") as f:
-                        f.write(content)
-                    logger.info(f"✅ [MEDIA] Fichier sauvegardé : {file_path}")
-                else:
-                    logger.error(
-                        f"❌ [MEDIA] Erreur {response.status_code} lors du téléchargement de {media_url}"
-                    )
+            response = await self._client.get(media_url)
+            if response.status_code == 200:
+                content = response.content
+                
+                # Si une clé média est fournie, on décrypte le contenu
+                if media_key:
+                    try:
+                        logger.info(f"🔓 [MEDIA] Déchiffrement du média avec la clé fournie...")
+                        media_type = "image"
+                        if "audio" in file_prefix or "voice" in file_prefix:
+                            media_type = "audio"
+                        elif "document" in file_prefix:
+                            media_type = "document"
+                        elif "video" in file_prefix:
+                            media_type = "video"
+                            
+                        content = self._decrypt_media(content, media_key, media_type)
+                        logger.info(f"✅ [MEDIA] Déchiffrement réussi !")
+                    except Exception as dec_err:
+                        logger.error(f"❌ [MEDIA] Échec du déchiffrement : {dec_err}")
+                
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                logger.info(f"✅ [MEDIA] Fichier sauvegardé : {file_path}")
+            else:
+                logger.error(
+                    f"❌ [MEDIA] Erreur {response.status_code} lors du téléchargement de {media_url}"
+                )
         except Exception as e:
             logger.error(f"❌ [MEDIA] Exception pendant le téléchargement : {e}")
 
@@ -222,8 +224,7 @@ class WhatsAppService:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(url, json=data, headers=headers)
+            response = await self._client.post(url, json=data, headers=headers)
 
             if response.status_code in (200, 201):
                 logger.info(

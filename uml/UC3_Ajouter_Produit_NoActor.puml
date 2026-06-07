@@ -1,0 +1,62 @@
+@startuml UC3_Ajouter_Produit_NoActor
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC3 — Ajouter un Produit (Sans Acteur)
+
+start
+:Marchand envoie une photo du produit;
+
+:Téléchargement et enregistrement de l'image
+dans la table temporaire **pending_media**;
+stop
+
+    note right
+      L'Agent s'arrête ici et attend
+      le message texte décrivant le produit.
+    end note
+
+:Marchand envoie la description du produit
+(ex: "Crée le produit robe rouge à 15000 FCFA");
+
+:Debounce 1.5s;
+
+:LLM extrait les attributs du produit
+(nom, prix, description) et récupère l'image en attente;
+
+if (Une image est présente en attente ?) then (Non)
+  :Répond en indiquant que l'image est obligatoire;
+  stop
+else (Oui)
+endif
+
+:Appelle **create_store_product()** avec l'image attachée;
+
+:Requête POST /api/tools/stores/{id}/products;
+
+if (API disponible ?) then (Erreur)
+  :Retourne un message d'erreur technique;
+  stop
+else (OK)
+  :Supprime l'image de la table **pending_media**;
+  :Confirme la création du produit;
+endif
+
+:Appelle **final_answer()**;
+
+:Sauvegarde l'historique de conversation;
+
+:Ajoute le **menu des capacités**;
+
+stop
+@enduml

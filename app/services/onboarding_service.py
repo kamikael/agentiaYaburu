@@ -86,9 +86,14 @@ class OnboardingService:
             user.onboarding_step = "completed"
             await db.commit()
             
-            # Message de bienvenue
+            # Message 1 : Bienvenue
             welcome_msg = f"Bienvenue {user.first_name or ''} ! Votre boutique *{store.store_name}* est maintenant connectée. Comment puis-je vous aider ?"
             await whatsapp_service.send_text_message(phone, welcome_msg)
+            # Message 2 : Menu des capacités (envoyé après pour garantir l'ordre)
+            import asyncio
+            await asyncio.sleep(1)
+            from app.agent.capabilities_menu import CAPABILITIES_MENU
+            await whatsapp_service.send_text_message(phone, CAPABILITIES_MENU)
             return "ONBOARDING_COMPLETED"
 
         # Cas 2 : Plusieurs boutiques
@@ -123,6 +128,11 @@ class OnboardingService:
                 user.onboarding_step = "completed"
                 await db.commit()
                 await whatsapp_service.send_text_message(phone, f"Parfait ! Vous êtes maintenant connecté à *{selected_store.store_name}*. Que souhaitez-vous faire ?")
+                # Message 2 : Menu des capacités (envoyé après pour garantir l'ordre)
+                import asyncio
+                await asyncio.sleep(1)
+                from app.agent.capabilities_menu import CAPABILITIES_MENU
+                await whatsapp_service.send_text_message(phone, CAPABILITIES_MENU)
                 return "ONBOARDING_COMPLETED"
             else:
                 # Entrée invalide -> Rappel des consignes

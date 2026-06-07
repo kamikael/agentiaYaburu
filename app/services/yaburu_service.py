@@ -14,6 +14,11 @@ class YaburuService:
         self.email = "agentia@system.local"
         self.password = "SuperSecurePassword123"
         self.timeout = 30.0
+        # Client HTTP persistant avec connection pooling (réutilisé sur toutes les requêtes)
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+        )
 
     async def _get_headers(self):
         # Tenter de charger le token depuis la base de données s'il n'est pas déjà en mémoire
@@ -65,27 +70,26 @@ class YaburuService:
         """Rafraîchit le token d'accès via l'API Yaburu"""
         url = f"{self.base_url}/admin/login"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    url, 
-                    json={"email": self.email, "password": self.password},
-                    headers={
+            response = await self._client.post(
+                url,
+                json={"email": self.email, "password": self.password},
+                headers={
                     "Accept": "application/json",
                     "Content-Type": "application/json"
                 }
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    new_token = data.get("access_token") or data.get("token")
-                    if new_token:
-                        self.token = new_token
-                        await self._save_token_to_db(new_token)
-                        logger.info("✅ Token Yaburu rafraîchi et persisté avec succès")
-                        return True
-                    return False
-                else:
-                    logger.error(f"❌ Échec du rafraîchissement du token: {response.status_code} - {response.text}")
-                    return False
+            )
+            if response.status_code == 200:
+                data = response.json()
+                new_token = data.get("access_token") or data.get("token")
+                if new_token:
+                    self.token = new_token
+                    await self._save_token_to_db(new_token)
+                    logger.info("✅ Token Yaburu rafraîchi et persisté avec succès")
+                    return True
+                return False
+            else:
+                logger.error(f"❌ Échec du rafraîchissement du token: {response.status_code} - {response.text}")
+                return False
         except Exception as e:
             logger.error(f"❌ Erreur lors du rafraîchissement du token: {str(e)}")
             return False
@@ -99,8 +103,7 @@ class YaburuService:
         params = {"phone": phone}
         
         async def make_request():
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                return await client.get(url, params=params, headers=await self._get_headers())
+            return await self._client.get(url, params=params, headers=await self._get_headers())
 
         try:
             response = await make_request()
@@ -127,8 +130,7 @@ class YaburuService:
     async def _make_get_request(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         """Méthode générique pour les requêtes GET avec gestion du refresh token"""
         async def make_req():
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                return await client.get(url, params=params, headers=await self._get_headers())
+            return await self._client.get(url, params=params, headers=await self._get_headers())
 
         try:
             response = await make_req()
@@ -188,17 +190,16 @@ class YaburuService:
             if "Content-Type" in headers:
                 del headers["Content-Type"]
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    url,
-                    data=data, # Données de formulaire
-                    files=files, # Fichiers
-                    headers=headers
-                )
+            response = await self._client.post(
+                url,
+                data=data,
+                files=files,
+                headers=headers
+            )
                 
-                if response.status_code in [200, 201]:
+            if response.status_code in [200, 201]:
                     return response.json()
-                else:
+            else:
                     logger.error(f"❌ Erreur création produit ({response.status_code}): {response.text}")
                     return None
         except Exception as e:

@@ -1,0 +1,106 @@
+@startuml UC0_Authentification_NoActor
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC0 — Authentification et Onboarding (Sans Acteur)
+
+start
+:Message reçu par le webhook WhatsApp
+(extendedTextMessage / conversation / imageMessage / audioMessage);
+
+if (Le message est un Audio ?) then (Oui)
+  :Téléchargement de l'audio;
+  :Transcription via OpenAI Whisper;
+  :Le texte transcrit remplace l'audio;
+else (Non)
+  if (Le message est une Image ?) then (Oui)
+    :Téléchargement de l'image;
+    :Enregistrement dans la table **pending_media**;
+    :Définit un texte par défaut "[Image reçue]";
+  else (Non)
+  endif
+endif
+
+if (Le message cite une réponse (Reply) ?) then (Oui)
+  :Formate et concatène le message cité
+  à la fin du texte principal;
+else (Non)
+endif
+
+:Appel de **yaburu_service.check_user(phone)**;
+
+if (Le numéro est associé à un compte Yaburu actif ?) then (Non)
+  :Envoie message d'erreur :
+  "Désolé, votre numéro n'est pas associé...";
+  stop
+else (Oui)
+  :Synchronise les infos profil et les boutiques
+  (Crée/Met à jour **User** et **Store** locaux);
+endif
+
+:Ajout du message dans **MessageQueue**;
+
+:Debounce glissant de 1.5s
+(Attente de silence de l'utilisateur);
+
+:Coalescence et fusion des messages
+en attente pour l'utilisateur;
+
+:Vérifie s'il y a une session active en base
+(Moins de 24h, active et liée à une boutique);
+
+if (Session active existante ?) then (Oui)
+  :Récupère ou crée la conversation active;
+  :Met à jour le timestamp de dernier message;
+  :Route le message fusionné vers **l'Agent IA**
+  (**agent_dispatcher.handle_agent_message**);
+  stop
+else (Non)
+  :Routage vers le service d'onboarding
+  (**onboarding_service.process_onboarding_step**);
+  
+  if (L'utilisateur a des boutiques synchronisées ?) then (Non)
+    :Envoie message : "Vous n'avez aucune boutique..."
+    (L'onboarding est bloqué);
+    stop
+  else (Oui)
+    if (Nombre de boutiques de l'utilisateur ?) then (Exactement 1)
+      :Crée une session active de 24h pour la boutique;
+      :Met à jour **onboarding_step = "completed"**;
+      :Envoie le message de bienvenue avec la boutique connectée;
+      :Ajoute le **Menu des capacités**;
+      stop
+    else (Plus de 1)
+      if (onboarding_step == "waiting_for_store" et texte non vide ?) then (Non / Premier passage)
+        :Met à jour **onboarding_step = "waiting_for_store"**;
+        :Envoie le message interactif de sélection de boutique;
+        stop
+      else (Oui / Réponse reçue)
+        :Analyse la réponse (Numéro ou nom exact);
+        if (Choix de boutique valide ?) then (Oui)
+          :Crée une session active de 24h pour la boutique choisie;
+          :Met à jour **onboarding_step = "completed"**;
+          :Envoie le message de confirmation de connexion;
+          :Ajoute le **Menu des capacités**;
+          stop
+        else (Non)
+          :Envoie le message d'erreur de choix;
+          :Renvoie la liste des boutiques pour sélection;
+          stop
+        endif
+      endif
+    endif
+  endif
+endif
+
+@enduml

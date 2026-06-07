@@ -1,0 +1,75 @@
+@startuml UC5_Changer_Boutique
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam activityBackgroundColor #E8F4FD
+skinparam activityBorderColor #2980B9
+skinparam activityDiamondBackgroundColor #FEF9E7
+skinparam activityDiamondBorderColor #F39C12
+skinparam arrowColor #2C3E50
+skinparam activityStartColor #27AE60
+skinparam activityEndColor #E74C3C
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+title UC5 — Changer de Boutique Active
+
+|#E8F5E9| Marchand |
+|#E3F2FD| Agent IA |
+|#FFF3E0| Yaburu API |
+|#F3E5F5| Base de données locale |
+
+|Marchand|
+start
+:Envoie un message\n**"Changer de boutique"**;
+
+|Agent IA|
+:Webhook reçu\nDebounce 1.5s;
+
+:Appelle **get_store_users()**\npour récupérer toutes les boutiques;
+
+|Yaburu API|
+:Requête GET\n/api/tools/users?phone={phone};
+:Retourne l'utilisateur\net la liste de ses boutiques;
+
+|Agent IA|
+if (Utilisateur a 1 seule boutique ?) then (Oui)
+  :Répond qu'il n'y a pas\nd'autre boutique disponible;
+  :Ajoute le menu;
+  |Marchand|
+  :Reçoit le message;
+  stop
+else (Non : plusieurs boutiques)
+endif
+
+:Affiche la liste des boutiques\ndisponibles numérotées\n*"Répondez avec le nom ou le numéro"*;
+
+|Marchand|
+:Répond avec le nom\nou le numéro de la boutique;
+
+|Agent IA|
+:Webhook reçu — Debounce 1.5s;
+:LLM identifie le choix\ndu marchand;
+:Appelle **change_store(name_store)**;
+
+|Base de données locale|
+:Désactive TOUTES les sessions\nactives de l'utilisateur;
+
+if (Session existante pour cette boutique ?) then (Oui)
+  :Réactive la session existante;
+else (Non)
+  :Crée une nouvelle session\n(token 24h);
+endif
+
+:Met à jour les ContextVars\n(store_id, yaburu_store_id);
+
+|Agent IA|
+:Appelle **final_answer()**\nconfirmant le changement 🏪;
+:Sauvegarde l'historique;
+:Ajoute le **menu des capacités**;
+
+|Marchand|
+:Reçoit la confirmation\n"Vous travaillez maintenant\nsur [Nouvelle Boutique]" + menu;
+
+stop
+@enduml
