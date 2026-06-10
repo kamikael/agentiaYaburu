@@ -285,6 +285,33 @@ def final_answer(answer: str, stats_included: bool = False):
     """
     return {"answer": answer, "stats_included": stats_included}
 
+class SearchKnowledgeBaseSchema(BaseModel):
+    query: str = Field(..., description="La question ou le sujet à rechercher dans la base de connaissances.")
+
+@tool(args_schema=SearchKnowledgeBaseSchema)
+async def search_knowledge_base(query: str) -> str:
+    """
+    Recherche des informations dans la base de connaissances Yaburu (règles, guides, procédures, etc.).
+    Utilise cet outil quand le marchand pose une question générale sur le fonctionnement de Yaburu ou demande de l'aide.
+    """
+    try:
+        from app.services.rag_service import rag_service
+        results = await rag_service.search(query=query)
+        if not results:
+            return "Aucune information trouvée dans la base de connaissances pour cette requête."
+        
+        # Formater les résultats
+        formatted_results = []
+        for i, r in enumerate(results, 1):
+            source = r.get("metadata", {}).get("title", "Document")
+            content = r.get("content", "").strip()
+            formatted_results.append(f"Source {i} ({source}):\n{content}")
+            
+        return "\n\n---\n\n".join(formatted_results)
+    except Exception as e:
+        logger.error(f"❌ Erreur tool search_knowledge_base: {e}")
+        return f"Une erreur est survenue lors de la recherche : {str(e)}"
+
 # Dictionnaire centralisé pour l'exécuteur
 AVAILABLE_TOOLS = {
     "get_store_stats": get_store_stats,
@@ -293,6 +320,7 @@ AVAILABLE_TOOLS = {
     "create_store_product": create_store_product,
     "get_store_users": get_store_users, 
     "change_store": change_store,
+    "search_knowledge_base": search_knowledge_base,
     "final_answer": final_answer 
     }
 

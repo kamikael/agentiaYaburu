@@ -7,6 +7,7 @@ from fastapi.responses import PlainTextResponse
 from app.schemas.webhook import Payload
 import json
 from app.services.webhook_router import webhook_router
+from app.api import admin_rag
 from config import settings 
 
 
@@ -17,7 +18,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Yaburu ChatBot API")
+
+# Configurer le CORS pour autoriser le frontend React local (Vite utilise souvent 5173 ou 3000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Inclure le routeur Admin RAG
+app.include_router(admin_rag.router, prefix="/api/v1/admin/rag", tags=["Admin RAG"])
 
 # Configuration (Devrait être dans config.py ou .env)
 VERIFY_TOKEN = settings.WHATSAPP_API_TOKEN

@@ -82,7 +82,7 @@ class OnboardingService:
         # Cas 1 : Une seule boutique -> Connexion automatique
         if len(stores) == 1:
             store = stores[0]
-            await self._create_session(db, user.id, store.id)
+            await self._create_or_renew_session(db, user.id, store.id)
             user.onboarding_step = "completed"
             await db.commit()
             
@@ -124,7 +124,7 @@ class OnboardingService:
                         break
             
             if selected_store:
-                await self._create_session(db, user.id, selected_store.id)
+                await self._create_or_renew_session(db, user.id, selected_store.id)
                 user.onboarding_step = "completed"
                 await db.commit()
                 await whatsapp_service.send_text_message(phone, f"Parfait ! Vous êtes maintenant connecté à *{selected_store.store_name}*. Que souhaitez-vous faire ?")
@@ -151,26 +151,43 @@ class OnboardingService:
         await whatsapp_service.send_store_selection(phone, stores_data)
         return "ONBOARDING_CONTINUE"
 
-    async def _create_session(self, db: AsyncSession, user_id: Any, store_id: Any):
-        """Crée une session active de 24h"""
+    async def _create_or_renew_session(self, db: AsyncSession, user_id: Any, store_id: Any):
+        """Crée ou renouvelle la session unique pour une boutique, avec une validité de 24h"""
         import secrets
-        token = secrets.token_urlsafe(32)
+        new_token = secrets.token_urlsafe(32)
+        new_expiration = datetime.utcnow() + timedelta(hours=24)
         
-        # Désactiver les anciennes sessions
         from app.models.stores import store as StoreModel
-        store_ids_subquery = select(StoreModel.id).where(StoreModel.utilisateur_id == user_id).scalar_subquery()
+        # 1. Désactiver toutes les sessions des autres boutiques de cet utilisateur
+        store_ids_subquery = select(StoreModel.id).where(
+            and_(StoreModel.utilisateur_id == user_id, StoreModel.id != store_id)
+        ).scalar_subquery()
+        
         await db.execute(
             Session.__table__.update()
             .where(Session.boutique_id.in_(store_ids_subquery))
             .values(est_active=False)
         )
         
-        new_session = Session(
-            boutique_id=store_id,
-            session_token=token,
-            est_active=True,
-            expire_le=datetime.utcnow() + timedelta(hours=24)
-        )
-        db.add(new_session)
+        # 2. Chercher la session unique pour LA boutique demandée
+        res = await db.execute(select(Session).where(Session.boutique_id == store_id))
+        existing_session = res.scalar_one_or_none()
+        
+        if existing_session:
+            # Renouvellement : UPDATE
+            existing_session.session_token = new_token
+            existing_session.est_active = True
+            existing_session.expire_le = new_expiration
+            logger.info(f"🔄 Session renouvelée pour la boutique {store_id}")
+        else:
+            # Création : INSERT
+            new_session = Session(
+                boutique_id=store_id,
+                session_token=new_token,
+                est_active=True,
+                expire_le=new_expiration
+            )
+            db.add(new_session)
+            logger.info(f"🆕 Nouvelle session créée pour la boutique {store_id}")
 
 onboarding_service = OnboardingService()

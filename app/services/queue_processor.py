@@ -30,8 +30,8 @@ async def process_user_queue(phone: str):
         # ── Debounce glissant ─────────────────────────────────────────────────
         # On attend jusqu'à ce qu'aucun nouveau message n'arrive pendant DEBOUNCE_WINDOW secondes.
         # Toutes les POLL_INTERVAL secondes on vérifie si la file a grossi.
-        DEBOUNCE_WINDOW = 1.5   # secondes sans nouveau message avant de traiter
-        POLL_INTERVAL   = 0.5   # fréquence de sondage de la file
+        DEBOUNCE_WINDOW = 0.5   # secondes sans nouveau message avant de traiter (réduit pour + de vitesse)
+        POLL_INTERVAL   = 0.2   # fréquence de sondage de la file (réduit pour + de réactivité)
         
         last_count = 0
         silence_elapsed = 0.0

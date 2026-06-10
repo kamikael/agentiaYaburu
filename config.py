@@ -60,8 +60,10 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: Optional[str] = None   
     
     # ============ RAG / EMBEDDINGS ============
-    EMBEDDINGS_MODEL: str = "distiluse-base-multilingual-cased-v2"
-    RAG_TOP_K: int = 3
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-2" # 768 dimensions
+    RAG_CHUNK_SIZE: int = 800
+    RAG_CHUNK_OVERLAP: int = 150
+    RAG_TOP_K: int = 5
     RAG_SIMILARITY_THRESHOLD: float = 0.5
     
     # ============ MONITORING & LOGGING ============

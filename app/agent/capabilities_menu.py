@@ -31,6 +31,10 @@ CAPABILITIES_MENU = """
    Je peux te rappeler ton nom, ta boutique active, et la liste de toutes tes boutiques.
    Exemples : "Mes infos", "C'est quoi mon profil ?", "Sur quelle boutique je suis ?"
 
+*7. Support et Aide sur Yaburu*
+   Tu peux me poser toutes tes questions sur le fonctionnement de Yaburu, nos services, la livraison, ou comment utiliser la plateforme.
+   Exemples : "Comment fonctionne la livraison ?", "Quels sont vos tarifs ?", "Comment récupérer mon mot de passe ?"
+
 ---
 Pour revoir ce menu a tout moment, dis-moi simplement "menu" ou "aide".
 """

@@ -123,25 +123,22 @@ class CustomAgentExecutor:
             agent_scratchpad.append(prediction)
 
             # Traitement des appels d'outils
-            for tool_call in prediction.tool_calls:
-                name = tool_call["name"]
-                args = tool_call["args"]
+            
+            # 1. Priorité au final_answer (arrêt immédiat)
+            final_answer_call = next((tc for tc in prediction.tool_calls if tc["name"] == "final_answer"), None)
+            if final_answer_call:
+                final_text = final_answer_call["args"].get("answer", "Erreur: pas de réponse générée.")
+                self._schedule_history_save(conversation_id, user_id, chat_history, input_text, final_text)
+                return final_text
+
+            # 2. Exécution parallèle de tous les autres outils pour plus de rapidité
+            async def run_and_format_tool(tool_call):
                 call_id = tool_call["id"]
-
-                # Détection Arrêt : final_answer
-                if name == "final_answer":
-                    final_text = args.get("answer", "Erreur: pas de réponse générée.")
-                    self._schedule_history_save(conversation_id, user_id, chat_history, input_text, final_text)
-                    return final_text
-
-                # Exécution dynamique
-                tool_result = await self._execute_tool(name, args)
-
-                # Injection du résultat dans le scratchpad
-                agent_scratchpad.append(ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=call_id
-                ))
+                tool_result = await self._execute_tool(tool_call["name"], tool_call["args"])
+                return ToolMessage(content=str(tool_result), tool_call_id=call_id)
+            
+            tool_messages = await asyncio.gather(*(run_and_format_tool(tc) for tc in prediction.tool_calls))
+            agent_scratchpad.extend(tool_messages)
         return "Désolé, j'ai atteint ma limite de réflexion veillez reposer votre question de manière plus concise ou essayez de nouveau."
 
     async def _execute_tool(self, name: str, args: dict) -> str:
@@ -169,15 +166,22 @@ class CustomAgentExecutor:
                 u_id = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
                 s_id = uuid.UUID(store_id) if isinstance(store_id, str) else store_id
                 
-                user = (await db.execute(select(User).where(User.id == u_id))).scalar_one_or_none()
-                store = (await db.execute(select(StoreModel).where(StoreModel.id == s_id))).scalar_one_or_none()
-                
-                return (
-                    user.first_name if user and user.first_name else "Marchand",
-                    store.store_name if store and store.store_name else "votre boutique",
-                    store.yaburu_store_id if store else None
+                # Exécution d'une seule requête avec JOIN pour de meilleures performances
+                result = await db.execute(
+                    select(User.first_name, StoreModel.store_name, StoreModel.yaburu_store_id)
+                    .join(StoreModel, StoreModel.utilisateur_id == User.id)
+                    .where(User.id == u_id, StoreModel.id == s_id)
                 )
-        except:
+                row = result.first()
+                if row:
+                    return (
+                        row.first_name if row.first_name else "Marchand",
+                        row.store_name if row.store_name else "votre boutique",
+                        row.yaburu_store_id
+                    )
+                return "Marchand", "votre boutique", None
+        except Exception as e:
+            logger.error(f"Error in _get_context_info: {e}")
             return "Marchand", "votre boutique", None
 
     async def _load_history(self, conversation_id):

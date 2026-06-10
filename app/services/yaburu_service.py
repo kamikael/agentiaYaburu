@@ -1,123 +1,48 @@
 import httpx
 import logging
 from typing import Optional, Dict, Any, List
-from sqlalchemy import select
-from app.db import AsyncSessionLocal
-from app.models.system_setting import SystemSetting
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 class YaburuService:
     def __init__(self):
-        self.base_url = "http://127.0.0.1:8000/api"
-        self.token = "5|CtjYaNMoa7bQjn46sD8VBizQzBZB1ERHW40eVPdudc795ecc"
-        self.email = "agentia@system.local"
-        self.password = "SuperSecurePassword123"
-        self.timeout = 30.0
-        # Client HTTP persistant avec connection pooling (réutilisé sur toutes les requêtes)
+        # Utilisation de l'URL configurée (ou valeur par défaut si non définie)
+        self.base_url = settings.YABURU_API_URL or "http://127.0.0.1:8000/api"
+        self.timeout = settings.YABURU_API_TIMEOUT or 30.0
+        
+        # Client HTTP persistant avec connection pooling
         self._client = httpx.AsyncClient(
             timeout=self.timeout,
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
         )
 
     async def _get_headers(self):
-        # Tenter de charger le token depuis la base de données s'il n'est pas déjà en mémoire
-        if not hasattr(self, "_token_initialized"):
-            await self._load_token_from_db()
-            self._token_initialized = True
-
+        # Utilisation directe de la clé API depuis la configuration
         return {
-            "Authorization": f"Bearer {self.token}",
+            "Authorization": f"Bearer {settings.YABURU_API_KEY}",
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
-
-    async def _load_token_from_db(self):
-        """Charge le token depuis la table system_settings"""
-        try:
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(SystemSetting).where(SystemSetting.key == "yaburu_api_token")
-                )
-                setting = result.scalar_one_or_none()
-                if setting:
-                    self.token = setting.value
-                    logger.info("🔑 Token Yaburu chargé depuis la base de données")
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du chargement du token depuis la DB: {str(e)}")
-
-    async def _save_token_to_db(self, token: str):
-        """Sauvegarde le token dans la table system_settings"""
-        try:
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(SystemSetting).where(SystemSetting.key == "yaburu_api_token")
-                )
-                setting = result.scalar_one_or_none()
-                
-                if setting:
-                    setting.value = token
-                else:
-                    setting = SystemSetting(key="yaburu_api_token", value=token, description="Token d'accès API Yaburu")
-                    db.add(setting)
-                
-                await db.commit()
-                logger.info("💾 Token Yaburu sauvegardé en base de données")
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la sauvegarde du token en DB: {str(e)}")
-
-    async def refresh_token(self) -> bool:
-        """Rafraîchit le token d'accès via l'API Yaburu"""
-        url = f"{self.base_url}/admin/login"
-        try:
-            response = await self._client.post(
-                url,
-                json={"email": self.email, "password": self.password},
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                }
-            )
-            if response.status_code == 200:
-                data = response.json()
-                new_token = data.get("access_token") or data.get("token")
-                if new_token:
-                    self.token = new_token
-                    await self._save_token_to_db(new_token)
-                    logger.info("✅ Token Yaburu rafraîchi et persisté avec succès")
-                    return True
-                return False
-            else:
-                logger.error(f"❌ Échec du rafraîchissement du token: {response.status_code} - {response.text}")
-                return False
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du rafraîchissement du token: {str(e)}")
-            return False
 
     async def check_user(self, phone: str) -> Optional[Dict[str, Any]]:
         """
         Vérifie l'existence d'un utilisateur et de ses boutiques sur le backend Yaburu.
         Appelle l'endpoint PHP: check_user($phone)
         """
-        url = f"{self.base_url}/tools/users"
+        url = f"{self.base_url}/api/tools/users"
         params = {"phone": phone}
         
-        async def make_request():
-            return await self._client.get(url, params=params, headers=await self._get_headers())
-
         try:
-            response = await make_request()
-            
-            # Si le token est expiré (401), on tente de le rafraîchir une fois
-            if response.status_code == 401:
-                logger.warning("⚠️ Token Yaburu expiré, tentative de rafraîchissement...")
-                if await self.refresh_token():
-                    response = await make_request()
+            response = await self._client.get(url, params=params, headers=await self._get_headers())
             
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 404:
                 logger.info(f"ℹ️ Utilisateur non trouvé sur Yaburu: {phone}")
+                return None
+            elif response.status_code == 401:
+                logger.error(f"❌ Clé API Yaburu invalide ou non autorisée (401)")
                 return None
             else:
                 logger.error(f"❌ Erreur API Yaburu ({response.status_code}): {response.text}")
@@ -128,18 +53,15 @@ class YaburuService:
             return None
 
     async def _make_get_request(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
-        """Méthode générique pour les requêtes GET avec gestion du refresh token"""
-        async def make_req():
-            return await self._client.get(url, params=params, headers=await self._get_headers())
-
+        """Méthode générique pour les requêtes GET"""
         try:
-            response = await make_req()
-            if response.status_code == 401:
-                if await self.refresh_token():
-                    response = await make_req()
+            response = await self._client.get(url, params=params, headers=await self._get_headers())
             
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 401:
+                logger.error(f"❌ Clé API Yaburu invalide ou non autorisée sur {url} (401)")
+                return None
             else:
                 logger.error(f"❌ Erreur API Yaburu sur {url} ({response.status_code}): {response.text}")
                 return None
@@ -149,12 +71,12 @@ class YaburuService:
 
     async def get_store_stats(self, store_id: str) -> Optional[Dict[str, Any]]:
         """Récupère les statistiques d'une boutique"""
-        url = f"{self.base_url}/tools/stores/{store_id}/stats"
+        url = f"{self.base_url}/api/tools/stores/{store_id}/stats"
         return await self._make_get_request(url)
 
     async def get_store_orders(self, store_id: str, name_product: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
         """Récupère les commandes d'une boutique, potentiellement filtrées par nom de produit"""
-        url = f"{self.base_url}/tools/stores/{store_id}/orders"
+        url = f"{self.base_url}/api/tools/stores/{store_id}/orders"
         params = {}
         if name_product:
             params["name_product"] = name_product
@@ -162,14 +84,14 @@ class YaburuService:
 
     async def get_store_products(self, store_id: str) -> Optional[List[Dict[str, Any]]]:
         """Récupère les produits d'une boutique"""
-        url = f"{self.base_url}/tools/stores/{store_id}/products"
+        url = f"{self.base_url}/api/tools/stores/{store_id}/products"
         return await self._make_get_request(url)
 
     async def create_product(self, store_id: str, data: Dict[str, Any], image_paths: List[str] = None) -> Optional[Dict[str, Any]]:
         """
         Crée un nouveau produit via l'API Yaburu avec support multi-images.
         """
-        url = f"{self.base_url}/tools/stores/{store_id}/products"
+        url = f"{self.base_url}/api/tools/stores/{store_id}/products"
         
         try:
             # Préparation des données (on ne met pas images dans json)
