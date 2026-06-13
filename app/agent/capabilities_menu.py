@@ -23,15 +23,11 @@ CAPABILITIES_MENU = """
    Je te montre les commandes passees sur un produit precis : clients, quantites, statuts, montants.
    Exemples : "Les commandes du T-shirt", "Qui a commande le savon ?", "Mes commandes sur le sac"
 
-*5. Changer de boutique*
-   Si tu as plusieurs boutiques sur Yaburu, je peux basculer vers une autre en un clin d'oeil.
-   Exemples : "Changer de boutique", "Je veux passer sur mon autre boutique"
+*5. Tes informations personnelles*
+   Je peux te rappeler ton nom et la liste de toutes tes boutiques actives.
+   Exemples : "Mes infos", "C'est quoi mon profil ?", "Quelles sont mes boutiques ?"
 
-*6. Tes informations personnelles*
-   Je peux te rappeler ton nom, ta boutique active, et la liste de toutes tes boutiques.
-   Exemples : "Mes infos", "C'est quoi mon profil ?", "Sur quelle boutique je suis ?"
-
-*7. Support et Aide sur Yaburu*
+*6. Support et Aide sur Yaburu*
    Tu peux me poser toutes tes questions sur le fonctionnement de Yaburu, nos services, la livraison, ou comment utiliser la plateforme.
    Exemples : "Comment fonctionne la livraison ?", "Quels sont vos tarifs ?", "Comment récupérer mon mot de passe ?"
 
@@ -59,16 +55,6 @@ _INTERMEDIATE_KEYWORDS = [
     "la quantité",
     "le stock",
     "type de produit",
-    "est-ce correct",
-    # Attente d'un choix de boutique
-    "entrez le nom",
-    "entrez le numéro",
-    "numéro de la boutique",
-    "nom de la boutique",
-    "écrire le nom exact",
-    "choisissez votre boutique",
-    "sélectionnez votre boutique",
-    "boutiques disponibles",
 ]
 
 # Mots-clés indiquant que le marchand demande explicitement le menu

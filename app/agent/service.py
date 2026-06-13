@@ -11,11 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.tools import AVAILABLE_TOOLS, TOOL_LIST
 from config import settings
 from app.db import AsyncSessionLocal
-from app.models.conversationHistory import ConversationHistory
+from app.models.messages import Message
 from app.models.user import User
 from app.models.stores import store as StoreModel
+from app.models.conversations import Conversation
 from sqlalchemy import select
-from app.agent.context import store_id_ctx, phone_number_ctx, yaburu_store_id_ctx
+from app.agent.context import phone_number_ctx
 from app.agent.prompts import agent_prompt
 
 logger = logging.getLogger(__name__)
@@ -52,32 +53,30 @@ class CustomAgentExecutor:
                 "chat_history": lambda x: x["chat_history"],
                 "agent_scratchpad": lambda x: x.get("agent_scratchpad", []),
                 "user_name": lambda x: x.get("user_name", "Marchand"),
-                "store_name": lambda x: x.get("store_name", "votre boutique")
+                "stores_list": lambda x: x.get("stores_list", "- Aucune boutique active"),
+                "session_summary": lambda x: x.get("session_summary", "Aucun résumé précédent.")
             }
             | agent_prompt
             | self.llm
         )
 
-    async def get_response(self, text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None,
+    async def get_response(self, text: str, conversation_id: str, user_id: str, phone: str = None,
                     image: Optional[dict] = None) -> str:
         """Méthode d'entrée pour obtenir une réponse de l'agent."""
         """Alias pour invoke() pour compatibilité avec le reste de l'application."""
-        return await self.invoke(text, store_id, conversation_id, user_id, phone, image)
+        return await self.invoke(text, conversation_id, user_id, phone, image)
 
-    async def invoke(self, input_text: str, store_id: str, conversation_id: str, user_id: str, phone: str = None, image: Optional[dict] = None) -> str:
-        # ContextVar pour que les outils accèdent aux infos sans paramètre LLM
-        store_id_ctx.set(store_id)
+    async def invoke(self, input_text: str, conversation_id: str, user_id: str, phone: str = None, image: Optional[dict] = None) -> str:
         if phone:
             phone_number_ctx.set(phone)
 
         # 1. Chargement contexte en parallèle
         # Chaque méthode ouvre sa propre session DB indépendante (sécurité asyncio.gather)
-        (user_name, store_name, yaburu_store_id), chat_history = await asyncio.gather(
-            self._get_context_info(user_id, store_id),
-            self._load_history(conversation_id)
+        (user_name, stores_list), chat_history, session_summary = await asyncio.gather(
+            self._get_context_info(user_id),
+            self._load_history(conversation_id),
+            self._get_session_summary(conversation_id)
         )
-        if yaburu_store_id:
-            yaburu_store_id_ctx.set(yaburu_store_id)
 
         agent_scratchpad = []
         iterations = 0
@@ -95,7 +94,8 @@ class CustomAgentExecutor:
                         "chat_history": chat_history,
                         "agent_scratchpad": agent_scratchpad,
                         "user_name": user_name,
-                        "store_name": store_name
+                        "stores_list": stores_list,
+                        "session_summary": session_summary
                     })
                     break  # Succès, on sort du retry
                 except Exception as e:
@@ -159,41 +159,89 @@ class CustomAgentExecutor:
             logger.error(f"❌ Erreur lors de l'exécution de {name}: {e}")
             return f"Erreur lors de l'exécution de l'outil {name}: {str(e)}"
 
-    async def _get_context_info(self, user_id, store_id):
-        """Ouvre sa propre session pour être sûr avec asyncio.gather."""
+    async def _get_context_info(self, user_id):
+        """Ouvre sa propre session pour récupérer l'utilisateur et ses boutiques."""
         try:
             async with AsyncSessionLocal() as db:
                 u_id = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-                s_id = uuid.UUID(store_id) if isinstance(store_id, str) else store_id
                 
-                # Exécution d'une seule requête avec JOIN pour de meilleures performances
-                result = await db.execute(
-                    select(User.first_name, StoreModel.store_name, StoreModel.yaburu_store_id)
-                    .join(StoreModel, StoreModel.utilisateur_id == User.id)
-                    .where(User.id == u_id, StoreModel.id == s_id)
-                )
-                row = result.first()
-                if row:
-                    return (
-                        row.first_name if row.first_name else "Marchand",
-                        row.store_name if row.store_name else "votre boutique",
-                        row.yaburu_store_id
-                    )
-                return "Marchand", "votre boutique", None
+                result = await db.execute(select(User).where(User.id == u_id))
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    return "Marchand", "- Aucune boutique"
+                
+                stores_res = await db.execute(select(StoreModel).where(StoreModel.utilisateur_id == u_id))
+                stores = stores_res.scalars().all()
+                
+                if not stores:
+                    stores_list = "- Aucune boutique active"
+                else:
+                    stores_list = "\n".join([f"- Nom: {s.store_name} (yaburu_boutique_id: {s.yaburu_store_id})" for s in stores])
+                    
+                return (user.first_name if user.first_name else "Marchand", stores_list)
         except Exception as e:
             logger.error(f"Error in _get_context_info: {e}")
-            return "Marchand", "votre boutique", None
+            return "Marchand", "- Erreur de chargement"
 
-    async def _load_history(self, conversation_id):
-        """Ouvre sa propre session pour être sûr avec asyncio.gather."""
+    async def generate_summary(self, conversation_id: str) -> str:
+        """Génère un résumé d'une conversation en utilisant le LLM"""
+        try:
+            msgs = await self._load_history(conversation_id)
+            if not msgs:
+                return "Aucun résumé (conversation vide)."
+            
+            # Construire un prompt simple
+            formatted_history = "\n".join([f"{'Marchand' if isinstance(m, HumanMessage) else 'Anna'}: {m.content}" for m in msgs])
+            prompt = (
+                "Voici l'historique de notre dernière conversation.\n"
+                "Fais un résumé ultra-concis (max 3-4 lignes) des points importants (ce que le marchand a fait, "
+                "ce qu'il a demandé, ce qui était en cours, les commandes traitées ou produits ajoutés). "
+                "Ne réponds qu'avec le résumé, sans fioritures.\n\n"
+                f"HISTORIQUE:\n{formatted_history}"
+            )
+            
+            # Appel direct au LLM
+            from langchain_core.messages import SystemMessage
+            response = await self.llm.ainvoke([SystemMessage(content=prompt)])
+            return response.content
+        except Exception as e:
+            logger.error(f"❌ Erreur generate_summary: {e}")
+            return "Erreur lors de la génération du résumé."
+
+    async def _get_session_summary(self, conversation_id):
+        """Récupère le résumé stocké dans la table Conversation"""
         try:
             async with AsyncSessionLocal() as db:
-                res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
-                record = res.scalar_one_or_none()
-                if record and record.full_context:
-                    msgs = messages_from_dict(json.loads(record.full_context))
-                    return msgs[-settings.AGENT_MAX_HISTORY:]
-        except: pass
+                c_id = uuid.UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+                res = await db.execute(select(Conversation).where(Conversation.id == c_id))
+                conv = res.scalar_one_or_none()
+                if conv and conv.resume_precedent:
+                    return conv.resume_precedent
+        except Exception as e:
+            logger.error(f"❌ Erreur _get_session_summary: {e}")
+        return "Aucun résumé précédent."
+
+    async def _load_history(self, conversation_id):
+        """Charge les N derniers messages depuis la table Message."""
+        try:
+            async with AsyncSessionLocal() as db:
+                c_id = uuid.UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+                res = await db.execute(
+                    select(Message)
+                    .where(Message.conversation_id == c_id)
+                    .order_by(Message.date_creation.asc())
+                )
+                records = res.scalars().all()
+                msgs = []
+                for r in records[-settings.AGENT_MAX_HISTORY:]:
+                    if r.role == "humain":
+                        msgs.append(HumanMessage(content=r.contenu))
+                    elif r.role == "agent":
+                        msgs.append(AIMessage(content=r.contenu))
+                return msgs
+        except Exception as e:
+            logger.error(f"❌ Erreur _load_history: {e}")
         return []
 
     def _schedule_history_save(self, conversation_id: str, user_id: str, chat_history: list, input_text: str, response_text: str):
@@ -209,16 +257,15 @@ class CustomAgentExecutor:
         task.add_done_callback(self._background_tasks.discard)
 
     async def _save_history(self, db, conversation_id, user_id, messages):
+        # Ne sauvegarder que les 2 derniers messages pour éviter les doublons avec ce qui est déjà en DB
+        new_messages = messages[-2:]
         try:
-            json_data = json.dumps(messages_to_dict(messages))
-            res = await db.execute(select(ConversationHistory).where(ConversationHistory.conversation_id == conversation_id))
-            record = res.scalar_one_or_none()
-            if record:
-                record.full_context = json_data
-            else:
-                db.add(ConversationHistory(conversation_id=conversation_id, full_context=json_data))
+            c_id = uuid.UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+            for msg in new_messages:
+                role = "humain" if isinstance(msg, HumanMessage) else "agent"
+                db.add(Message(conversation_id=c_id, role=role, contenu=msg.content))
             await db.commit()
-            logger.info(f"💾 [HISTORY] Historique sauvegardé pour conversation {conversation_id}")
+            logger.info(f"💾 [HISTORY] 2 messages ajoutés à la conversation {conversation_id}")
         except Exception as e:
             logger.error(f"❌ [HISTORY] Erreur sauvegarde : {e}")
 

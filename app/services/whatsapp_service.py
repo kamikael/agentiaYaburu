@@ -36,6 +36,12 @@ class WhatsAppService:
         payload = WASenderTextPayload(to=to, text=body)
         return await self._send(payload.dict(exclude_none=True))
 
+    async def send_typing(self, to: str) -> bool:
+        """Envoie un événement 'typing' (en train d'écrire) via WASender/Evolution API."""
+        # Désactivé temporairement car WASenderAPI (endpoint /send-message) 
+        # retourne une erreur 422 si le champ "text" n'est pas présent.
+        return True
+
     async def send_image_message(
         self,
         to: str,

@@ -30,7 +30,7 @@ class YaburuService:
         Vérifie l'existence d'un utilisateur et de ses boutiques sur le backend Yaburu.
         Appelle l'endpoint PHP: check_user($phone)
         """
-        url = f"{self.base_url}/api/tools/users"
+        url = f"{self.base_url}/tools/users"
         params = {"phone": phone}
         
         try:
@@ -71,12 +71,12 @@ class YaburuService:
 
     async def get_store_stats(self, store_id: str) -> Optional[Dict[str, Any]]:
         """Récupère les statistiques d'une boutique"""
-        url = f"{self.base_url}/api/tools/stores/{store_id}/stats"
+        url = f"{self.base_url}/tools/stores/{store_id}/stats"
         return await self._make_get_request(url)
 
     async def get_store_orders(self, store_id: str, name_product: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
         """Récupère les commandes d'une boutique, potentiellement filtrées par nom de produit"""
-        url = f"{self.base_url}/api/tools/stores/{store_id}/orders"
+        url = f"{self.base_url}/tools/stores/{store_id}/orders"
         params = {}
         if name_product:
             params["name_product"] = name_product
@@ -84,14 +84,14 @@ class YaburuService:
 
     async def get_store_products(self, store_id: str) -> Optional[List[Dict[str, Any]]]:
         """Récupère les produits d'une boutique"""
-        url = f"{self.base_url}/api/tools/stores/{store_id}/products"
+        url = f"{self.base_url}/tools/stores/{store_id}/products"
         return await self._make_get_request(url)
 
     async def create_product(self, store_id: str, data: Dict[str, Any], image_paths: List[str] = None) -> Optional[Dict[str, Any]]:
         """
         Crée un nouveau produit via l'API Yaburu avec support multi-images.
         """
-        url = f"{self.base_url}/api/tools/stores/{store_id}/products"
+        url = f"{self.base_url}/tools/stores/{store_id}/products"
         
         try:
             # Préparation des données (on ne met pas images dans json)

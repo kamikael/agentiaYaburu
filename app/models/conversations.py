@@ -26,6 +26,7 @@ class Conversation(Base):
 
     # Métadonnées additionnelles héritées de la version précédente
     title = Column(String(255))
+    resume_precedent = Column(Text, nullable=True)
 
     # Synonymes pour compatibilité
     started_at = synonym("debut_le")
@@ -41,16 +42,16 @@ class Conversation(Base):
     # Propriétés dynamiques pour compatibilité totale avec le code Python existant
     @property
     def user_id(self):
-        return self.session.store.utilisateur_id if self.session and self.session.store else None
+        return self.session.utilisateur_id if self.session else None
 
     @property
     def store_id(self):
-        return self.session.boutique_id if self.session else None
+        return None
         
     @property
     def user(self):
-        return self.session.store.user if self.session and self.session.store else None
+        return self.session.user if self.session else None
 
     @property
     def store(self):
-        return self.session.store if self.session else None
+        return None

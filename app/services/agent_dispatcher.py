@@ -22,7 +22,6 @@ class AgentDispatcher:
         # 1. Obtenir la réponse de l'agent
         response_text = await agent_service.get_response(
             user_id=user_id,
-            store_id=str(session.store_id),
             conversation_id=conversation_id,
             text=text,
             phone=phone,

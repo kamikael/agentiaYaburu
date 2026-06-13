@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     DATADOG_API_KEY: Optional[str] = None
     DATADOG_APP_KEY: Optional[str] = None
     
+    # ============ LANGSMITH TRACING ============
+    LANGCHAIN_TRACING_V2: str = str(os.getenv("LANGCHAIN_TRACING_V2", "false"))
+    LANGCHAIN_ENDPOINT: str = str(os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"))
+    LANGCHAIN_API_KEY: Optional[str] = str(os.getenv("LANGCHAIN_API_KEY")) if os.getenv("LANGCHAIN_API_KEY") else None
+    LANGCHAIN_PROJECT: str = str(os.getenv("LANGCHAIN_PROJECT", "yaburu_agent"))
+    
     # ============ RATE LIMITING ============
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REQUESTS: int = 100
@@ -106,3 +112,11 @@ def get_settings() -> Settings:
 
 # Accès facile
 settings = get_settings()
+
+# Assurer que Langchain prend en compte la config LangSmith (même si passée via Docker/env au lieu de .env)
+if settings.LANGCHAIN_TRACING_V2.lower() == "true":
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+    if settings.LANGCHAIN_API_KEY:
+        os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY

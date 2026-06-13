@@ -1,5 +1,4 @@
 from .adminLog import *
-from .conversationHistory import *
 from .conversations import *
 from .messages import *
 from .ragDocument import *
@@ -9,8 +8,8 @@ from .stores import *
 from .usageStat import *
 from .user import *
 from .system_setting import *
-from .pendingMedia import *
 from .products import *
 from .outilsExecutees import *
 from .rechercheContextuelle import *
 from .messageQueue import *
+from .attachment_file import *

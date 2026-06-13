@@ -17,19 +17,24 @@ class Message(Base):
     conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversation.id", ondelete="CASCADE"), nullable=False)
 
     # Colonnes physiques conformes à l'UML
-    role = Column(String(20), nullable=False)  # user, assistant, system, tool
+    role = Column(String(20), nullable=False)  # agent, humain, system, tool
+    boutique_ciblee_id = Column(UUID(as_uuid=True), ForeignKey("boutique.id", ondelete="SET NULL"), nullable=True)
     contenu = Column(Text, nullable=False)
     date_creation = Column(DateTime, server_default=func.now())
     date_mise_a_jour = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     # Métadonnées additionnelles héritées de la version précédente
-    message_type = Column(String(50), default="text")
+    type_message = Column(String(50), default="texte") # texte, image, document
     format = Column(String(20), default="plain")
-    whatsapp_message_id = Column(String(255), unique=True)
+    wa_message_id = Column(String(255), unique=True)
     whatsapp_status = Column(String(50))
+    tokens_utilises = Column(Integer, default=0)
+    is_deleted = Column(Boolean, default=False)
 
     # Synonymes pour compatibilité
     content = synonym("contenu")
+    message_type = synonym("type_message")
+    whatsapp_message_id = synonym("wa_message_id")
     created_at = synonym("date_creation")
     updated_at = synonym("date_mise_a_jour")
 

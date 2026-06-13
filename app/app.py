@@ -234,19 +234,23 @@ async def receive_webhook(request: Request):
 """
         )
 
-        # Exemple de routage
-        await webhook_router.route_message(
-            phone=phone,
-            text=text,
-            audio=audio,
-            image=image,
-            quoted_text=quoted_text,
-            quoted_image=quoted_image,
-            quoted_audio=quoted_audio
+        import asyncio
+        # Lancement de la routine de routage et de base de données en arrière-plan
+        # Cela permet au serveur de répondre 200 OK à WhatsApp immédiatement (< 50ms)
+        asyncio.create_task(
+            webhook_router.route_message(
+                phone=phone,
+                text=text,
+                audio=audio,
+                image=image,
+                quoted_text=quoted_text,
+                quoted_image=quoted_image,
+                quoted_audio=quoted_audio
+            )
         )
 
     except Exception as e:
-        logger.error(f"❌ Erreur traitement message: {str(e)}")
+        logger.exception(f"❌ Erreur traitement message:")
 
     return {"status": "ok"}
 

@@ -13,7 +13,7 @@ from app.db import Base
 
 class RagDocument(Base):
     
-    __tablename__ = "rag_documents"
+    __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 

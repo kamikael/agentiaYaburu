@@ -44,6 +44,4 @@ class store(Base):
 
     # Relations
     user = relationship("User", back_populates="stores")
-    conversations = relationship("Conversation", secondary="session", viewonly=True)
-    sessions = relationship("Session", back_populates="store")
     products = relationship("Product", back_populates="store")

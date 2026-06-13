@@ -14,7 +14,7 @@ class Session(Base):
     __tablename__ = "session"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    boutique_id = Column(UUID(as_uuid=True), ForeignKey("boutique.id", ondelete="SET NULL"))
+    utilisateur_id = Column(UUID(as_uuid=True), ForeignKey("utilisateur.id", ondelete="CASCADE"), nullable=False)
 
     # Colonnes physiques conformes à l'UML
     session_token = Column(String(512), unique=True, nullable=False)
@@ -27,21 +27,12 @@ class Session(Base):
     last_activity_at = Column(DateTime, server_default=func.now())
 
     # Synonymes pour compatibilité
-    store_id = synonym("boutique_id")
+    user_id = synonym("utilisateur_id")
     is_active = synonym("est_active")
     expires_at = synonym("expire_le")
     created_at = synonym("date_creation")
     updated_at = synonym("date_mise_a_jour")
 
     # relations
-    store = relationship("store", back_populates="sessions")
+    user = relationship("User", back_populates="sessions")
     conversations = relationship("Conversation", back_populates="session")
-
-    # Propriétés dynamiques pour conserver la compatibilité avec le code existant
-    @property
-    def user_id(self):
-        return self.store.utilisateur_id if self.store else None
-
-    @property
-    def user(self):
-        return self.store.user if self.store else None

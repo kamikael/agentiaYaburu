@@ -45,14 +45,8 @@ class User(Base):
 
     # Relations
     stores = relationship("store", back_populates="user")
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
 
-    # Propriétés dynamiques pour conserver la compatibilité sans mappers complexes
-    @property
-    def sessions(self):
-        sessions_list = []
-        for s in self.stores:
-            sessions_list.extend(s.sessions)
-        return sessions_list
 
     @property
     def conversations(self):

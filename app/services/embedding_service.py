@@ -53,15 +53,14 @@ class EmbeddingService:
         try:
             import asyncio
             results = []
-            
-            # Traitement strictement séquentiel pour respecter le quota Free Tier (100 requêtes/minute)
-            for i, text in enumerate(texts):
+            # Traitement séquentiel avec un délai de 4.1 secondes pour garantir < 15 requêtes/minute (Free Tier Limit)
+            for text in texts:
                 success = False
                 retries = 0
                 while not success and retries < 3:
                     try:
-                        # Délai de base pour lisser les requêtes (~1.5s par requête = 40 req/min)
-                        await asyncio.sleep(1.5)
+                        # 4.1s * 15 = 61.5s, on est sûr de ne pas dépasser le quota
+                        await asyncio.sleep(4.1)
                         
                         res = await self.client.aio.models.embed_content(
                             model=self.model_name,
